@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUpdated, ref, computed, nextTick } from "vue";
+import { onMounted, onUpdated, ref, computed, nextTick, Ref } from "vue";
 import QRCodeVue3 from "qrcode-vue3";
 import LZString from "lz-string";
 import {
@@ -93,7 +93,6 @@ const data = ref({
       ignore: false,
       tasks: [
         {
-          id: 1,
           title: "My Task",
           description: "",
           category: "development",
@@ -108,7 +107,6 @@ const data = ref({
       ignore: false,
       tasks: [
         {
-          id: 1,
           title: "My First Task",
           description: "",
           category: "development",
@@ -129,10 +127,12 @@ const focusLastTask = (tasks) => {
   document.getElementById(`task-name-${tasks.length - 1}`).focus();
 };
 
-const currentTask: Task | null = ref(null);
+const currentTask: Ref<Task | null> = ref(null);
 
 class Task {
   done = false;
+
+  category = "";
 
   jumped = false;
 
@@ -187,6 +187,8 @@ class Group {
   id = null;
 
   name = null;
+
+  ignore = false;
 
   tasks: Task[] = [];
 
@@ -1025,7 +1027,6 @@ onMounted(() => {
       fileExt="png"
       myclass="my-qur"
       imgclass="img-qr"
-      downloadButton="my-button"
       :downloadOptions="{ name: 'vqr', extension: 'png' }"
     />
 

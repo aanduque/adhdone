@@ -212,7 +212,11 @@ const userNavigation = [
         <div class="border-t border-gray-700 pt-4 pb-3">
           <div class="flex items-center px-5">
             <div class="flex-shrink-0">
-              <img class="h-10 w-10 rounded-full" :src="user.imageUrl" alt="" />
+              <img
+                class="h-10 w-10 rounded-full"
+                :src="gravatar.url(user.email)"
+                alt=""
+              />
             </div>
             <div class="ml-3">
               <div class="text-base font-medium text-white">
