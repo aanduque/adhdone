@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CheckIcon } from "@heroicons/vue/24/outline";
 import { computed } from "vue";
 const props = defineProps<{
   total: number;
@@ -15,23 +16,31 @@ const percentage = computed(() => {
     class="
       relative
       w-full
-      h-2
+      h-1
       group
-      hover:h-6
-      bg-gray-200
+      hover:h-7
+      bg-gray-600
       transition-all
       print:hidden
     "
   >
     <div
       v-if="total > 0"
-      class="absolute inset-y-0 left-0 bg-green-400"
+      class="absolute inset-y-0 left-0 bg-green-400 transition-all h-7"
       :style="{ width: `${percentage}%` }"
-    ></div>
-    <div class="absolute hidden group-hover:block right-0">
-      <span class="text-xs mx-4 opacity-75"
-        >{{ completed }} of {{ total }} completed</span
-      >
+    >
+      <div class="relative h-7">
+        <div
+          class="hidden group-hover:flex justify-end items-center h-7"
+          v-if="completed"
+        >
+          <span class="text-xs flex items-center px-3 h-7 m-0 truncate">
+            <CheckIcon class="h-3 w-3 mr-1" aria-hidden="true" />
+            {{ completed }} of {{ total }} completed
+            <span v-if="completed >= 0.3 * total">- Good Job 🎉</span></span
+          >
+        </div>
+      </div>
     </div>
   </div>
 </template>

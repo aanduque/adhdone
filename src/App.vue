@@ -15,11 +15,16 @@ import {
   PlusCircleIcon,
   PlusIcon,
   CheckCircleIcon,
+  QrCodeIcon,
 } from "@heroicons/vue/24/outline";
 import ActiveTaskBar from "./components/ActiveTaskBar.vue";
 import SidePanel from "./components/SidePanel.vue";
 import Home from "./components/Home.vue";
+import QRCodeModal from "./components/QRCodeModal.vue";
 import gravatar from "gravatar";
+import { ref } from "vue";
+
+const qrOpen = ref(false);
 
 const user = {
   name: "Arindo Duque",
@@ -73,7 +78,11 @@ const userNavigation = [
           </div>
           <div class="hidden md:block">
             <div class="ml-4 flex items-center md:ml-6">
-              <button
+              <button class="text-white" @click="() => (qrOpen = !qrOpen)">
+                <QrCodeIcon class="h-6 w-6" />
+              </button>
+
+              <!-- <button
                 type="button"
                 class="
                   rounded-full
@@ -90,7 +99,7 @@ const userNavigation = [
               >
                 <span class="sr-only">View notifications</span>
                 <BellIcon class="h-6 w-6" aria-hidden="true" />
-              </button>
+              </button> -->
 
               <!-- Profile dropdown -->
               <Menu as="div" class="relative ml-3">
@@ -274,7 +283,14 @@ const userNavigation = [
       <!-- <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8"> -->
       <!-- Replace with your content -->
       <!-- <div class="px-4 py-4 sm:px-0"> -->
+      <QRCodeModal
+        :open="qrOpen"
+        title="QR Code"
+        :close="() => (qrOpen = false)"
+      />
+
       <Home />
+
       <!-- </div> -->
       <!-- /End replace -->
       <!-- </div> -->

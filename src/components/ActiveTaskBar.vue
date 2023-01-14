@@ -16,7 +16,7 @@ defineProps<{
         <div class="flex flex-wrap items-center justify-between">
           <!-- Item -->
           <div class="flex w-0 flex-1 items-center" v-if="task">
-            <span class="flex rounded-lg bg-indigo-800 p-2">
+            <span class="rounded-lg bg-indigo-800 p-2 hidden md:flex">
               <CheckCircleIcon class="h-6 w-6 text-white" aria-hidden="true" />
             </span>
             <p class="ml-3 truncate text-white flex gap-2">
@@ -41,11 +41,12 @@ defineProps<{
           <div
             class="
               order-3
-              mt-2
               w-full
               flex-shrink-0 flex
               gap-x-2
-              sm:order-2 sm:mt-0 sm:w-auto
+              sm:order-2
+              mt-0
+              sm:w-auto
             "
           >
             <slot></slot>
