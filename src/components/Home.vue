@@ -38,6 +38,10 @@ import {
   EllipsisHorizontalCircleIcon,
   ArrowDownCircleIcon,
   ArrowUpCircleIcon,
+  TagIcon,
+  RectangleGroupIcon,
+  ClipboardDocumentCheckIcon,
+  ArchiveBoxArrowDownIcon,
 } from "@heroicons/vue/24/outline";
 import { PlusIcon as PlusIconMini } from "@heroicons/vue/20/solid";
 import { PlusIcon as PlusIconOutline } from "@heroicons/vue/24/outline";
@@ -363,6 +367,12 @@ const toggleGroup = (group) => {
   openedGroups.value[group.name] = !isOpened;
 };
 
+const taskHasCategory = (task, categoryId) => {
+  const category = getCategory(task.category);
+
+  return snakeCase(category.name) === snakeCase(categoryId);
+};
+
 const getCategory = (categoryId: string) => {
   return (
     data.value.categories.filter(
@@ -394,7 +404,7 @@ onMounted(() => {
   <div class="bg-gray-100 pb-24">
     <ProgressBar :completed="completedTasks" :total="totalTasks" />
     <header class="bg-white shadow-sm print:hidden">
-      <div class="mx-auto max-w-7xl py-4 px-4 sm:px-6 lg:px-8">
+      <div class="mx-auto container py-4 px-4 sm:px-6 lg:px-8">
         <div class="md:flex items-center md:justify-between">
           <div class="min-w-0 flex-1 flex items-center">
             <!-- <h2
@@ -505,14 +515,17 @@ onMounted(() => {
       </div>
     </header>
 
-    <div class="max-w-7xl mx-auto py-10">
+    <div class="container mx-auto py-10">
       <div
         class="
           divide-y divide-gray-200
           rounded-lg
           bg-gray-200
           shadow
-          sm:grid sm:grid-cols-3 sm:gap-px sm:divide-y-0
+          sm:grid
+          md:grid-cols-2
+          lg:grid-cols-3
+          sm:gap-px sm:divide-y-0
         "
       >
         <div
@@ -898,15 +911,75 @@ onMounted(() => {
                                 active
                                   ? 'bg-gray-100 text-gray-900'
                                   : 'text-gray-700',
-                                'group flex items-center px-4 py-2 text-sm',
+                                'group flex items-center px-4 py-2 text-sm justify-between',
                               ]"
                             >
-                              <span
-                                class="mr-3 h-3 w-3 rounded-full"
-                                :style="{ backgroundColor: category.color }"
-                                >&nbsp;</span
-                              >
-                              {{ category.name }}
+                              <span class="flex">
+                                <TagIcon
+                                  class="mr-3 h-5 w-5"
+                                  :style="{ color: category.color }"
+                                  aria-hidden="true"
+                                />
+                                {{ category.name }}
+                              </span>
+                              <CheckIcon
+                                v-if="taskHasCategory(task, category.name)"
+                                class="h-3 w-3 text-green-700"
+                              />
+                            </a>
+                          </MenuItem>
+                        </div>
+
+                        <!-- Move Between Groups -->
+                        <div class="py-1">
+                          <small class="px-4 py-1 block">Move to</small>
+                          <MenuItem
+                            v-slot="{ active }"
+                            v-for="(someGroup, someGroupIndex) in data.groups"
+                            :key="someGroupIndex"
+                          >
+                            <a
+                              href="#"
+                              @click="
+                                ($event) => {
+                                  $event.preventDefault();
+                                  // Copy task
+                                  const taskCopy = Object.assign({}, task);
+                                  // Remove from existing group
+                                  group.tasks.splice(taskIndex, 1);
+                                  // Add to new group
+                                  someGroup.tasks.push(taskCopy);
+                                }
+                              "
+                              :class="[
+                                active
+                                  ? 'bg-gray-100 text-gray-900'
+                                  : 'text-gray-700',
+                                'group flex items-center px-4 py-2 text-sm justify-between',
+                              ]"
+                            >
+                              <span class="flex">
+                                <component
+                                  :is="
+                                    someGroup.ignore
+                                      ? ArchiveBoxArrowDownIcon
+                                      : ClipboardDocumentCheckIcon
+                                  "
+                                  class="
+                                    mr-3
+                                    h-5
+                                    w-5
+                                    text-gray-400
+                                    group-hover:text-gray-500
+                                  "
+                                  aria-hidden="true"
+                                />
+                                {{ someGroup.name }}
+                              </span>
+                              <CheckIcon
+                                v-if="someGroupIndex === groupIndex"
+                                class="h-3 w-3 text-green-700"
+                              />
                             </a>
                           </MenuItem>
                         </div>
