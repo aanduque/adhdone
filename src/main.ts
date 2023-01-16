@@ -1,6 +1,8 @@
-import { createApp } from 'vue'
-import App from './App.vue'
+import { createApp } from "vue";
+import App from "./App.vue";
+import { autoAnimatePlugin } from "@formkit/auto-animate/vue";
+import HotkeyPlugin from "v-hotkey3";
 
-import './assets/main.css'
+import "./assets/main.css";
 
-createApp(App).mount('#app')
+createApp(App).use(autoAnimatePlugin).use(HotkeyPlugin).mount("#app");

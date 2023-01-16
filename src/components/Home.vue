@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUpdated, ref, computed, nextTick } from "vue";
+import { onMounted, onUpdated, ref, computed, nextTick, watch } from "vue";
+import { applyFilters, doAction } from "@wordpress/hooks";
+import imgBgUrl from "@/../public/groups-bg.png";
+import download from "in-browser-download";
 import QRCodeVue3 from "qrcode-vue3";
 import LZString from "lz-string";
+import GenerateId from "generate-id";
 import {
   flatten,
   template,
@@ -9,6 +13,11 @@ import {
   capitalize,
   snakeCase,
   defaultsDeep,
+  get,
+  find,
+  debounce,
+  last,
+  findIndex,
 } from "lodash";
 import moment from "moment/min/moment-with-locales";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
@@ -24,6 +33,9 @@ import SidePanel from "./SidePanel.vue";
 import Empty from "./Empty.vue";
 import ProgressBar from "./ProgressBar.vue";
 import Settings from "./Settings.vue";
+import Calendar from "./Calendar.vue";
+import TaskDetails from "./TaskDetails.vue";
+import TaskCheck from "./TaskCheck.vue";
 import {
   PlusCircleIcon,
   PlayIcon,
@@ -42,6 +54,9 @@ import {
   RectangleGroupIcon,
   ClipboardDocumentCheckIcon,
   ArchiveBoxArrowDownIcon,
+  ArrowPathIcon,
+  SquaresPlusIcon,
+  CalendarIcon,
 } from "@heroicons/vue/24/outline";
 import { PlusIcon as PlusIconMini } from "@heroicons/vue/20/solid";
 import { PlusIcon as PlusIconOutline } from "@heroicons/vue/24/outline";
@@ -63,6 +78,8 @@ import {
   UsersIcon,
   TrashIcon,
 } from "@heroicons/vue/24/outline";
+import { getIssues, LinearPlugin } from "@/integrations/Linear";
+import { SessionPlugin } from "@/integrations/Session";
 
 const defaultSettings = {
   lang: "pt-br",
@@ -78,34 +95,33 @@ const defaultSettings = {
 };
 const openedGroups = ref({});
 
-const endpoint = "https://api.linear.app/graphql";
-const query = `query { issues(filter: { 
-    assignee: { email: { eq: "arindo@wpultimo.com" } }
-  }) { nodes { id identifier title dueDate description url state { id name } } } }`;
+const settingsOpened = ref(false);
 
-const variables = {};
+const selectedTasks = ref([]);
 
-const headers = {
-  "Content-Type": "application/json",
-  Authorization: import.meta.env.VITE_LINEAR_PERSONAL_ACCESS_TOKEN,
+const idGenerator = new GenerateId();
+
+const Linear = ref(new LinearPlugin());
+const Session = ref(new SessionPlugin());
+
+const pullTasks = (group) => {
+  Linear.pullTasks().then((tasks) => (group.tasks = group.tasks.concat(tasks)));
 };
-
-const options = {
-  method: "POST",
-  headers,
-  body: JSON.stringify({ query, variables }),
-};
-
-fetch(endpoint, options)
-  .then((res) => res.json())
-  .then((data) => console.log(data))
-  .catch((err) => console.error(err));
 
 const loading = ref(true);
 
+const exportFileName = moment().format("YYYY-MM-DD");
+
 const sidePanelOpen = ref(false);
 
+const hash = computed(() => window.location.hash);
+
 const currentUrl = ref("");
+
+const tabs = [
+  { id: "groups", name: "Group View", icon: SquaresPlusIcon },
+  { id: "calendar", name: "Calendar View", icon: CalendarIcon },
+];
 
 const colors = [
   "#1abc9c",
@@ -143,6 +159,9 @@ const data = ref({
     },
   ],
   settings: defaultSettings,
+  hoveredGroup: null,
+  hoveredTask: null,
+  currentView: "groups",
   groups: [
     {
       name: "",
@@ -175,21 +194,50 @@ const data = ref({
   ],
 });
 
+const current = ref({
+  task: null,
+});
+
+const isGroupHovered = (group) => {
+  return data.value.hoveredGroup == group.id;
+};
+
 // Api key authentication
 
-templateSettings.interpolate = /{{([\s\S]+?)}}/g;
+const getTaskTitleInput = (group, task) => {
+  return document.getElementById(`task-name-${group.id}-${task.id}`);
+};
 
-const compileTemplate = template(data.value.settings.actionStart);
+const focusLastTask = (group) => {
+  data.value.currentView = "groups";
+  nextTick(() => {
+    const lastTask = last(group.tasks) as Task;
+    const taskInput = getTaskTitleInput(group, lastTask);
 
-const focusLastTask = (group, groupIndex) => {
-  document
-    .getElementById(`task-name-${groupIndex}-${group.tasks.length - 1}`)
-    .focus();
+    nextTick(() => {
+      taskInput?.scrollTo();
+      taskInput?.focus();
+    });
+  });
+};
+
+const focusGroup = () => {
+  data.value.currentView = "groups";
+  nextTick(() => {
+    const lastGroup = last(data.value.groups) as Group;
+    const groupName = document.getElementById(`group-name-${lastGroup.id}`);
+    nextTick(() => {
+      groupName?.scrollTo();
+      groupName?.focus();
+    });
+  });
 };
 
 const currentTask = ref(null);
 
 class Task {
+  id = null;
+
   done = false;
 
   category = "";
@@ -202,9 +250,11 @@ class Task {
 
   description = "";
 
-  constructor(task = "My Task", description = "") {
+  constructor(task = "My Task", description = "", category = "") {
     this.title = task;
     this.description = description;
+    this.category = category;
+    this.id = idGenerator.generate(20);
   }
 }
 
@@ -243,8 +293,27 @@ const remainingSkips = computed(() => {
   );
 });
 
+const clearState = () => {
+  const state = Object.assign({}, data.value, {
+    history: [],
+  });
+
+  state.groups = state.groups.map((group) => {
+    group.tasks = group.tasks
+      .filter((task) => !task.done)
+      .map((task) => {
+        task.jumped = false;
+
+        return task;
+      });
+    return group;
+  });
+
+  return state;
+};
+
 class Group {
-  id = null;
+  id: string | null = null;
 
   name = null;
 
@@ -252,7 +321,9 @@ class Group {
 
   tasks: Task[] = [];
 
-  constructor() {}
+  constructor() {
+    this.id = idGenerator.generate(20);
+  }
 }
 
 const updateUrlWithState = () => {
@@ -276,6 +347,11 @@ window.addEventListener(
   },
   false
 );
+
+const start = (task) => {
+  console.log(`Starting task "${task.title}"`);
+  doAction("task.start", task, data.value.settings);
+};
 
 const pickTask = (task, taskIndex, groupIndex) => {
   task.counter++;
@@ -310,7 +386,7 @@ const extractStateFromUrl = () => {
     return;
   }
 
-  console.log(window.location.hash);
+  // console.log(window.location.hash);
 
   currentUrl.value = window.location.toString();
 
@@ -318,7 +394,7 @@ const extractStateFromUrl = () => {
     LZString.decompressFromEncodedURIComponent(window.location.hash.slice(1))
   );
 
-  console.log(state);
+  // console.log(state);
 
   state.settings = defaultsDeep(state.settings, defaultSettings);
 
@@ -329,8 +405,7 @@ const selectedTask = computed(() => {
   return data.value.history.slice(-1)[0];
 });
 
-const jump = ($event) => {
-  $event.preventDefault();
+const jump = () => {
   if (currentTask.value === null) {
     return;
   }
@@ -339,9 +414,9 @@ const jump = ($event) => {
   pickATask();
 };
 
-const completeTaskAndPickNext = ($event) => {
-  // $event.preventDefault();
+const completeTaskAndPickNext = () => {
   pickATask();
+  doAction("task.next", data.value.settings);
 };
 
 const today = computed(() => {
@@ -357,6 +432,8 @@ const isActive = (groupIndex, taskIndex) => {
     currentTask.value === data.value.groups[groupIndex].tasks[taskIndex]
   );
 };
+
+const c = console;
 
 const isGroupOpened = (group) => {
   return openedGroups.value[group.name] ?? false;
@@ -384,10 +461,28 @@ const getCategory = (categoryId: string) => {
   );
 };
 
-onUpdated(updateUrlWithState);
+const tagGroupAsCurrent = debounce((group) => {
+  group.id = group.id?.length
+    ? group.id
+    : LZString.compressToEncodedURIComponent(group.name);
+  // console.log(group);
+  data.value.hoveredGroup = group.id;
+}, 100);
+
+const tagTaskAsCurrent = debounce((task) => {
+  task.id = task.id
+    ? task.id
+    : LZString.compressToEncodedURIComponent(task.title);
+  // console.log(task);
+  data.value.hoveredTask = task.id;
+}, 100);
+
+watch(() => data.value.groups, updateUrlWithState, { deep: true });
+
+// onUpdated(updateUrlWithState);
 
 onMounted(() => {
-  console.log("Loaded");
+  // console.log("Loaded");
 
   extractStateFromUrl();
 
@@ -398,10 +493,52 @@ onMounted(() => {
 
   nextTick(() => (loading.value = false));
 });
+
+const getGroupBy = (value, field = "id") => {
+  return find(data.value.groups, [field, value]);
+};
+
+const addTask = (group, task?: Task) => {
+  group.tasks.push(task ?? new Task("", "", data.value.lastCategory));
+
+  focusLastTask(group);
+};
+
+const addGroup = () => {
+  data.value.groups.push(new Group());
+
+  focusGroup();
+};
+
+const deleteTask = (group, task) => {
+  const taskIndex = findIndex(group.tasks, ["id", task.id]);
+  group.tasks.splice(taskIndex, 1);
+};
+
+const deleteGroup = (group) => {
+  const groupIndex = findIndex(data.value.groups, ["id", group.id]);
+  data.value.groups.splice(groupIndex, 1);
+};
+
+const keymap = {
+  // 'esc+ctrl' is OK.
+  x: (event) => {
+    console.log(data.value.hoveredTask);
+  },
+  c: (event) => {
+    if (data.value.hoveredGroup) {
+      const group = getGroupBy(data.value.hoveredGroup);
+
+      if (group) {
+        addTask(group);
+      }
+    }
+  },
+};
 </script>
 
 <template>
-  <div class="bg-gray-100 pb-24">
+  <div class="bg-gray-100 pb-24" v-hotkey="keymap">
     <ProgressBar :completed="completedTasks" :total="totalTasks" />
     <header class="bg-white shadow-sm print:hidden">
       <div class="mx-auto container py-4 px-4 sm:px-6 lg:px-8">
@@ -456,7 +593,7 @@ onMounted(() => {
                   focus:ring-indigo-500
                 "
                 :class="!remainingSkips ? 'opacity-50' : ''"
-                @click="sidePanelOpen = !sidePanelOpen"
+                @click.prevent="sidePanelOpen = !sidePanelOpen"
               >
                 <ForwardIcon class="mr-2 -ml-1 h-5 w-5" aria-hidden="true" />
                 {{ remainingSkips ? "Skips" : "No skips available" }}
@@ -478,6 +615,33 @@ onMounted(() => {
                 >
               </button>
             </span>
+            <button @click.prevent="() => (settingsOpened = true)">
+              Settings
+            </button>
+            <button
+              @click.prevent="
+                () => {
+                  data = clearState();
+                }
+              "
+            >
+              Reset Day
+            </button>
+            <button
+              @click.prevent="
+                () => {
+                  const jsonToDownload = Object.assign({}, data, {
+                    hash,
+                  });
+                  download(
+                    JSON.stringify(jsonToDownload),
+                    `${exportFileName}.tasks.json`
+                  );
+                }
+              "
+            >
+              Export
+            </button>
             <button
               type="button"
               class="
@@ -502,7 +666,7 @@ onMounted(() => {
                 focus:ring-indigo-500
                 focus:ring-offset-2
               "
-              @click="() => data.groups.push(new Group())"
+              @click.prevent="() => addGroup()"
             >
               <PlusCircleIcon
                 class="h-6 w-6 text-white mr-2"
@@ -515,12 +679,62 @@ onMounted(() => {
       </div>
     </header>
 
-    <div class="container mx-auto py-10">
+    <div class="container mx-auto" v-auto-animate>
+      <div class="py-6">
+        <div class="sm:hidden">
+          <label for="tabs" class="sr-only">Select a tab</label>
+          <!-- Use an "onChange" listener to redirect the user to the selected tab URL. -->
+          <select
+            id="tabs"
+            name="tabs"
+            class="
+              block
+              w-full
+              rounded-md
+              border-gray-300
+              focus:border-indigo-500 focus:ring-indigo-500
+            "
+          >
+            <option
+              v-for="tab in tabs"
+              :key="tab.name"
+              :selected="(data.currentView ?? 'groups') === tab.id"
+            >
+              {{ tab.name }}
+            </option>
+          </select>
+        </div>
+        <div class="hidden sm:block">
+          <nav class="flex space-x-4 justify-center" aria-label="Tabs">
+            <a
+              v-for="tab in tabs"
+              href="#"
+              :key="tab.name"
+              @click.prevent="() => (data.currentView = tab.id)"
+              :class="[
+                (data.currentView ?? 'groups') === tab.id
+                  ? 'bg-gray-200 text-gray-800'
+                  : 'text-gray-600 hover:text-gray-800',
+                'flex items-center px-3 py-2 font-medium text-sm rounded-md',
+              ]"
+              :aria-current="
+                (data.currentView ?? 'groups') === tab.id ? 'page' : undefined
+              "
+            >
+              <component :is="tab.icon" class="mr-1 h-4 w-4" />
+              {{ tab.name }}
+            </a>
+          </nav>
+        </div>
+      </div>
       <div
+        v-if="data.currentView === 'calendar'"
         class="
           divide-y divide-gray-200
+          relative
+          bg-no-repeat
           rounded-lg
-          bg-gray-200
+          bg-white
           shadow
           sm:grid
           md:grid-cols-2
@@ -528,16 +742,46 @@ onMounted(() => {
           sm:gap-px sm:divide-y-0
         "
       >
+        <Calendar />
+      </div>
+      <div
+        v-if="data.currentView === 'groups'"
+        v-auto-animate
+        class="
+          divide-y divide-gray-200
+          relative
+          bg-no-repeat
+          rounded-lg
+          bg-gray-50
+          shadow
+          sm:grid
+          md:grid-cols-2
+          lg:grid-cols-3
+          sm:gap-px sm:divide-y-1
+        "
+      >
+        <div
+          class="absolute inset-0 bg-no-repeat opacity-10"
+          :style="`background-image: url(${imgBgUrl}); background-size: 600px; background-position: right 105%; z-index: 0; -webkit-filter: grayscale(100%); filter: grayscale(100%);`"
+        >
+          &nbsp;
+        </div>
         <div
           v-for="(group, groupIndex) in data.groups"
+          @mouseover="() => tagGroupAsCurrent(group)"
           :key="group.name"
           :class="[
+            'border-r border-gray-200',
             groupIndex === 0
               ? 'rounded-tl-lg rounded-tr-lg sm:rounded-tr-none'
               : '',
-            groupIndex === 2 ? 'sm:rounded-tr-lg' : '',
-            groupIndex === data.groups.length - 1 ? 'sm:rounded-bl-lg' : '',
-            groupIndex === data.groups.length - 0
+            groupIndex === 1 ? 'md:rounded-tr-lg lg:rounded-tr-none' : '',
+            groupIndex === 2 ? 'lg:rounded-tr-lg' : '',
+            groupIndex === data.groups.length - 3 ? 'lg:rounded-bl-lg' : '',
+            groupIndex === data.groups.length - 2
+              ? 'md:rounded-bl-lg lg:rounded-bl-none'
+              : '',
+            groupIndex === data.groups.length - 1
               ? 'rounded-bl-lg rounded-br-lg sm:rounded-bl-none'
               : '',
             'relative group p-8 flex flex-col',
@@ -569,142 +813,169 @@ onMounted(() => {
                   bg-transparent
                 "
                 v-model.lazy="group.name"
+                :id="`group-name-${group.id}`"
                 :placeholder="'Group ' + (groupIndex + 1)"
               />
-              <Menu as="div" class="relative ml-3 inline-block text-left">
-                <div>
-                  <MenuButton
-                    class="
-                      -my-2
-                      -mr-4
-                      hidden
-                      items-center
-                      rounded-full
-                      group-hover:flex
-                      bg-transparent
-                      p-2
-                      text-gray-400
-                      hover:text-gray-600
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500
-                    "
-                  >
-                    <span class="sr-only">Open options</span>
-                    <Cog8ToothIcon class="h-5 w-5" aria-hidden="true" />
-                  </MenuButton>
-                </div>
-
-                <transition
-                  enter-active-class="transition ease-out duration-100"
-                  enter-from-class="transform opacity-0 scale-95"
-                  enter-to-class="transform opacity-100 scale-100"
-                  leave-active-class="transition ease-in duration-75"
-                  leave-from-class="transform opacity-100 scale-100"
-                  leave-to-class="transform opacity-0 scale-95"
+              <div v-if="isGroupHovered(group)">Active</div>
+              <div class="flex items-center">
+                <button
+                  @click.prevent="() => pullTasks(group)"
+                  class="
+                    -my-2
+                    -mr-4
+                    hidden
+                    items-center
+                    rounded-full
+                    group-hover:flex
+                    bg-transparent
+                    p-2
+                    text-gray-400
+                    hover:text-gray-600
+                    focus:outline-none focus:ring-2 focus:ring-indigo-500
+                  "
                 >
-                  <MenuItems
-                    class="
-                      absolute
-                      right-0
-                      z-10
-                      mt-2
-                      w-72
-                      origin-top-right
-                      rounded-md
-                      bg-white
-                      shadow-lg
-                      ring-1 ring-black ring-opacity-5
-                      divide-y divide-gray-100
-                      focus:outline-none
-                    "
+                  <ArrowPathIcon class="h-5 w-5" />
+                </button>
+                <Menu as="div" class="relative ml-3 inline-block text-left">
+                  <div>
+                    <MenuButton
+                      class="
+                        -my-2
+                        -mr-4
+                        hidden
+                        items-center
+                        rounded-full
+                        group-hover:flex
+                        bg-transparent
+                        p-2
+                        text-gray-400
+                        hover:text-gray-600
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500
+                      "
+                    >
+                      <span class="sr-only">Open options</span>
+                      <Cog8ToothIcon class="h-5 w-5" aria-hidden="true" />
+                    </MenuButton>
+                  </div>
+
+                  <transition
+                    enter-active-class="transition ease-out duration-100"
+                    enter-from-class="transform opacity-0 scale-95"
+                    enter-to-class="transform opacity-100 scale-100"
+                    leave-active-class="transition ease-in duration-75"
+                    leave-from-class="transform opacity-100 scale-100"
+                    leave-to-class="transform opacity-0 scale-95"
                   >
-                    <div class="py-1">
-                      <MenuItem v-slot="{ active }">
-                        <a
-                          href="#"
-                          :class="[
-                            active
-                              ? 'bg-gray-100 text-gray-900'
-                              : 'text-gray-700',
-                            'flex justify-between px-4 py-2 text-sm',
-                          ]"
-                        >
-                          <SwitchGroup
-                            as="div"
-                            class="flex items-center justify-between"
+                    <MenuItems
+                      class="
+                        absolute
+                        right-0
+                        z-10
+                        mt-2
+                        w-72
+                        origin-top-right
+                        rounded-md
+                        bg-white
+                        shadow-lg
+                        ring-1 ring-black ring-opacity-5
+                        divide-y divide-gray-100
+                        focus:outline-none
+                      "
+                    >
+                      <div class="py-1">
+                        <MenuItem v-slot="{ active }">
+                          <a
+                            href="#"
+                            :class="[
+                              active
+                                ? 'bg-gray-100 text-gray-900'
+                                : 'text-gray-700',
+                              'flex justify-between px-4 py-2 text-sm',
+                            ]"
                           >
-                            <span class="flex flex-grow flex-col">
-                              <SwitchLabel
-                                as="span"
-                                class="text-sm font-medium text-gray-900"
-                                passive
-                                >Ignore group</SwitchLabel
-                              >
-                              <SwitchDescription
-                                as="span"
-                                class="text-sm text-gray-500"
-                                >Prevent tasks from this group from being
-                                picked.</SwitchDescription
-                              >
-                            </span>
-                            <Switch
-                              v-model="group.ignore"
-                              :class="[
-                                group.ignore ? 'bg-indigo-600' : 'bg-gray-200',
-                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
-                              ]"
+                            <SwitchGroup
+                              as="div"
+                              class="flex items-center justify-between"
                             >
-                              <span
-                                aria-hidden="true"
+                              <span class="flex flex-grow flex-col">
+                                <SwitchLabel
+                                  as="span"
+                                  class="text-sm font-medium text-gray-900"
+                                  passive
+                                  >Ignore group</SwitchLabel
+                                >
+                                <SwitchDescription
+                                  as="span"
+                                  class="text-sm text-gray-500"
+                                  >Prevent tasks from this group from being
+                                  picked.</SwitchDescription
+                                >
+                              </span>
+                              <Switch
+                                v-model="group.ignore"
                                 :class="[
                                   group.ignore
-                                    ? 'translate-x-5'
-                                    : 'translate-x-0',
-                                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                    ? 'bg-indigo-600'
+                                    : 'bg-gray-200',
+                                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
                                 ]"
-                              />
-                            </Switch>
-                          </SwitchGroup>
-                        </a>
-                      </MenuItem>
-                    </div>
-                    <div class="py-1">
-                      <MenuItem v-slot="{ active }">
-                        <a
-                          @click="
-                            ($event) => {
-                              $event.preventDefault();
-                              data.groups.splice(groupIndex, 1);
-                            }
-                          "
-                          href="#"
-                          :class="[
-                            active
-                              ? 'bg-gray-100 text-gray-900'
-                              : 'text-gray-700',
-                            'group flex items-center px-4 py-2 text-sm',
-                          ]"
-                        >
-                          <TrashIcon
-                            class="
-                              mr-3
-                              h-5
-                              w-5
-                              text-gray-400
-                              group-hover:text-gray-500
-                            "
-                            aria-hidden="true"
-                          />
-                          Delete
-                        </a>
-                      </MenuItem>
-                    </div>
-                  </MenuItems>
-                </transition>
-              </Menu>
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  :class="[
+                                    group.ignore
+                                      ? 'translate-x-5'
+                                      : 'translate-x-0',
+                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                  ]"
+                                />
+                              </Switch>
+                            </SwitchGroup>
+                          </a>
+                        </MenuItem>
+                      </div>
+                      <div class="py-1">
+                        <MenuItem v-slot="{ active }">
+                          <a
+                            @click.prevent="() => deleteGroup(group)"
+                            href="#"
+                            :class="[
+                              active
+                                ? 'bg-gray-100 text-gray-900'
+                                : 'text-gray-700',
+                              'group flex items-center px-4 py-2 text-sm',
+                            ]"
+                          >
+                            <TrashIcon
+                              class="
+                                mr-3
+                                h-5
+                                w-5
+                                text-gray-400
+                                group-hover:text-gray-500
+                              "
+                              aria-hidden="true"
+                            />
+                            Delete
+                          </a>
+                        </MenuItem>
+                      </div>
+                    </MenuItems>
+                  </transition>
+                </Menu>
+              </div>
             </div>
-            <p class="mt-2 text-sm text-gray-500">
-              Doloribus dolores nostrum quia qui natus officia quod et dolorem.
-              Sit repellendus qui ut at blanditiis et quo et molestiae.
+            <p
+              class="mt-2 text-sm text-gray-500 focus:outline-none"
+              @input="
+                (e) => {
+                  group.description = e.target.innerText;
+                }
+              "
+              contenteditable="true"
+              placeholder="teste"
+            >
+              {{ group.description ?? "No description" }}
             </p>
           </div>
 
@@ -715,7 +986,11 @@ onMounted(() => {
             />
           </div>
 
-          <div class="flex flex-col mt-6 w-full mb-auto pb-4">
+          <div
+            v-if="group.tasks.length"
+            class="flex flex-col mt-6 w-full mb-auto pb-4"
+            v-auto-animate
+          >
             <div
               class="
                 flex flex-1
@@ -729,30 +1004,27 @@ onMounted(() => {
                 transition-all
               "
               v-for="(task, taskIndex) in group.tasks"
+              @mouseover="() => tagTaskAsCurrent(task)"
               :class="[
-                isActive(groupIndex, taskIndex) ? 'bg-gray-100' : '',
+                isActive(groupIndex, taskIndex)
+                  ? `${
+                      group.ignore ? 'bg-white' : 'bg-gray-50'
+                    } scale-[104%] shadow-md border border-gray-200 rounded-md transition-transform z-10`
+                  : '',
                 taskIndex >= data.settings.maxTasksPerGroup &&
                 !isGroupOpened(group)
                   ? 'max-h-0 h-0 sm:py-0 overflow-hidden opacity-0'
                   : '',
                 task.done ? 'order-last sm:flex' : '',
               ]"
-              :style="{ borderColor: getCategory(task.category).color }"
+              :style="{ borderLeftColor: getCategory(task.category).color }"
               :key="taskIndex"
             >
               <div class="flex flex-1">
-                <div class="flex items-center">
-                  <div class="pretty p-icon p-round p-smooth p-thick">
-                    <input type="checkbox" v-model="task.done" />
-                    <div class="state p-success-o">
-                      <CheckIcon class="icon" aria-hidden="true" />
-                      <label> </label>
-                    </div>
-                  </div>
-                </div>
+                <TaskCheck v-model="task.done" />
                 <div class="text-sm flex flex-1">
                   <label
-                    :for="`task-name-${groupIndex}-${taskIndex}`"
+                    :for="`task-name-${group.id}-${task.id}`"
                     class="
                       font-medium
                       text-gray-700
@@ -761,7 +1033,7 @@ onMounted(() => {
                     "
                   >
                     <input
-                      :id="`task-name-${groupIndex}-${taskIndex}`"
+                      :id="`task-name-${group.id}-${task.id}`"
                       class="
                         font-normal
                         text-gray-700
@@ -769,9 +1041,36 @@ onMounted(() => {
                         focus:border-none focus:outline-none
                         flex flex-grow flex-1
                         truncate
+                        mr-2
                       "
                       :class="[task.done ? 'line-through opacity-50' : '']"
-                      v-model.lazy="task.title"
+                      v-model="task.title"
+                      @dblclick="() => (current.task = task)"
+                      @keyup.prevent.delete="
+                        () => {
+                          if (task.title.length === 0) {
+                            deleteTask(group, task);
+                          }
+                          task.title = task.title.splice(-1);
+                        }
+                      "
+                      @keyup.esc="
+                        () => {
+                          if (task.title.length === 0) {
+                            deleteTask(group, task);
+                          } else {
+                            const input = getTaskTitleInput(group, task);
+                            input?.blur();
+                          }
+                        }
+                      "
+                      @keyup.enter="
+                        () => {
+                          const input = getTaskTitleInput(group, task);
+                          input?.blur();
+                        }
+                      "
+                      @keyup.shift.enter.exact="() => addTask(group)"
                       placeholder="Task"
                     />
                     <span
@@ -790,6 +1089,10 @@ onMounted(() => {
                       >{{ task.counter }}</span
                     >
                   </label>
+                  <span
+                    class="inline-flex flex items-center"
+                    v-html="applyFilters('task.labels', '', task, group)"
+                  ></span>
                   <span
                     v-if="task.jumped"
                     class="
@@ -863,12 +1166,8 @@ onMounted(() => {
                         <div class="py-1">
                           <MenuItem v-slot="{ active }">
                             <a
-                              @click="
-                                ($event) => {
-                                  $event.preventDefault();
-
-                                  pickTask(task, taskIndex, groupIndex);
-                                }
+                              @click.prevent="
+                                () => pickTask(task, taskIndex, groupIndex)
                               "
                               href="#"
                               :class="[
@@ -901,9 +1200,9 @@ onMounted(() => {
                           >
                             <a
                               href="#"
-                              @click="
-                                ($event) => {
-                                  $event.preventDefault();
+                              @click.prevent="
+                                () => {
+                                  data.lastCategory = snakeCase(category.name);
                                   task.category = snakeCase(category.name);
                                 }
                               "
@@ -940,9 +1239,8 @@ onMounted(() => {
                           >
                             <a
                               href="#"
-                              @click="
-                                ($event) => {
-                                  $event.preventDefault();
+                              @click.prevent="
+                                () => {
                                   // Copy task
                                   const taskCopy = Object.assign({}, task);
                                   // Remove from existing group
@@ -987,12 +1285,7 @@ onMounted(() => {
                         <div class="py-1">
                           <MenuItem v-slot="{ active }">
                             <a
-                              @click="
-                                ($event) => {
-                                  $event.preventDefault();
-                                  group.tasks.splice(taskIndex, 1);
-                                }
-                              "
+                              @click.prevent="() => deleteTask(group, task)"
                               href="#"
                               :class="[
                                 active
@@ -1018,47 +1311,20 @@ onMounted(() => {
                       </MenuItems>
                     </transition>
                   </Menu>
-                  <!-- <p
-                  id="comments-description"
-                  :class="isActive(groupIndex, taskIndex) ? 'block' : 'hidden'"
-                  class="text-gray-500 group-hover:block"
-                >
-                  <textarea
-                    class="
-                      text-gray-500
-                      focus:outline-none
-                      p-0
-                      m-0
-                      bg-transparent
-                      border-none
-                      text-sm
-                      focus:border-none
-                      outline-none
-                      w-full
-                    "
-                    :rows="Math.floor(task.description.length / 200)"
-                    v-model.lazy="task.description"
-                    placeholder="Task description"
-                  ></textarea>
-                </p> -->
                 </div>
               </div>
             </div>
           </div>
 
           <div
-            v-if="
-              group.tasks.filter((task) => !task.done).length >
-              data.settings.maxTasksPerGroup
-            "
+            v-if="group.tasks.length > data.settings.maxTasksPerGroup"
             class=""
           >
             <a
               href="#"
               class="text-xs text-gray-400 flex justify-items-center"
-              @click="
-                ($event) => {
-                  $event.preventDefault();
+              @click.prevent="
+                () => {
                   toggleGroup(group);
                 }
               "
@@ -1078,7 +1344,7 @@ onMounted(() => {
             </a>
           </div>
 
-          <div class="flex justify-end">
+          <div class="flex justify-end" v-if="group.tasks.length">
             <button
               type="button"
               class="
@@ -1096,12 +1362,10 @@ onMounted(() => {
                 focus:ring-indigo-500
                 focus:ring-offset-2
               "
-              @click="
+              @click.prevent="
                 () => {
-                  group.tasks.push(new Task(''));
-                  nextTick(() => {
-                    focusLastTask(group, groupIndex);
-                  });
+                  group.tasks.push(new Task('', '', data.lastCategory));
+                  focusLastTask(group);
                 }
               "
             >
@@ -1141,13 +1405,13 @@ onMounted(() => {
       :downloadOptions="{ name: 'vqr', extension: 'png' }"
     />
 
-    <ActiveTaskBar :task="currentTask">
+    <ActiveTaskBar :task="currentTask" :fullScreen="false">
       <button
         v-if="currentTask"
         :disabled="
           !(currentTask !== null && !currentTask.jumped) || !remainingSkips
         "
-        @click="jump"
+        @click.prevent="jump"
         type="button"
         :class="
           !(currentTask !== null && !currentTask.jumped) || !remainingSkips
@@ -1184,6 +1448,7 @@ onMounted(() => {
       </button>
       <a
         v-if="currentTask"
+        @click.prevent="() => start(currentTask)"
         class="
           flex
           items-center
@@ -1200,14 +1465,7 @@ onMounted(() => {
           hover:bg-indigo-50
           group
         "
-        :href="
-          compileTemplate({
-            taskTitle: currentTask.title ?? 'No Title',
-            taskCategory: currentTask.category,
-            taskDescription: currentTask.description,
-            duration: data.settings.pomodoroLength,
-          })
-        "
+        href="#"
       >
         <PlayIcon class="lg:mr-2 lg:-ml-1 h-5 w-5" aria-hidden="true" />
         <span class="transition ease-out duration-200 hidden lg:block"
@@ -1216,7 +1474,7 @@ onMounted(() => {
       </a>
       <a
         v-if="currentTask"
-        @click="completeTaskAndPickNext"
+        @click.prevent="completeTaskAndPickNext"
         class="
           flex
           items-center
@@ -1233,7 +1491,7 @@ onMounted(() => {
           hover:bg-indigo-50
           group
         "
-        :href="data.settings.actionComplete"
+        href="#"
       >
         <CheckCircleIcon class="lg:mr-2 lg:-ml-1 h-5 w-5" aria-hidden="true" />
         <span class="transition ease-out duration-200 hidden lg:block"
@@ -1258,7 +1516,7 @@ onMounted(() => {
           shadow-sm
           hover:bg-indigo-50
         "
-        @click="() => pickATask()"
+        @click.prevent="() => pickATask()"
       >
         <BoltIcon class="mr-2 -ml-1 h-5 w-5" aria-hidden="true" />
         <span class="">Pick Task</span>
@@ -1267,73 +1525,6 @@ onMounted(() => {
 
     <SidePanel title="History" :open="sidePanelOpen">
       <div>
-        <div>
-          <div class="mb-6">
-            <!-- <label for="email" class="block text-sm font-medium text-gray-700"
-              >Search candidates</label
-            > -->
-            <div
-              class="mt-1 flex rounded-md shadow-sm"
-              v-for="(category, index) in data.categories"
-            >
-              <div
-                class="relative flex flex-grow items-stretch focus-within:z-10"
-              >
-                <input
-                  type="email"
-                  name="email"
-                  id="email"
-                  v-model="category.name"
-                  class="
-                    block
-                    w-full
-                    rounded-none rounded-l-md
-                    border-gray-300
-                    focus:border-indigo-500 focus:ring-indigo-500
-                    sm:text-sm
-                  "
-                  placeholder="Category name"
-                />
-              </div>
-              <div
-                type="button"
-                class="
-                  relative
-                  -ml-px
-                  inline-flex
-                  items-center
-                  space-x-2
-                  rounded-r-md
-                  border border-gray-300
-                  bg-gray-50
-                  px-3
-                  py-0
-                  text-sm
-                  font-medium
-                  text-gray-700
-                  hover:bg-gray-100
-                  focus:border-indigo-500
-                  focus:outline-none
-                  focus:ring-1
-                  focus:ring-indigo-500
-                "
-              >
-                <label>
-                  <span
-                    class="inline-block h-3 w-3 rounded-full"
-                    :style="{ backgroundColor: category.color }"
-                    >&nbsp;</span
-                  >
-                  <input
-                    v-model="category.color"
-                    type="color"
-                    class="w-0 opacity-0"
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
         <table>
           <thead>
             <tr>
@@ -1352,12 +1543,18 @@ onMounted(() => {
         </table>
       </div>
     </SidePanel>
+    <TaskDetails v-if="current.task" v-model="current" />
+    <!-- <Settings
+      :open="settingsOpened"
+      :categories="data.categories"
+      @update:categories="(categories) => (data.categories = categories)"
+      @close="() => (settingsOpened = false)"
+      v-model="data.settings"
+    ></Settings> -->
   </div>
 </template>
 
 <style scoped>
-@import "pretty-checkbox";
-
 .pretty.p-icon .state .icon {
   border-width: 2px !important;
 }

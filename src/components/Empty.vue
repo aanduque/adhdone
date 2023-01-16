@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useSlots } from "vue";
 import { CheckCircleIcon } from "@heroicons/vue/24/outline";
+
+const slots = useSlots();
 
 defineProps<{
   title: string;
@@ -10,12 +13,14 @@ defineProps<{
 <template>
   <div
     class="
-      text-center
-      p-4
-      border-2 border-dashed border-gray-200
+      mt-4
+      flex flex-grow flex-col
       rounded-lg
-      my-4
-      flex-grow
+      border-2 border-dashed border-gray-200
+      p-4
+      text-center
+      items-center
+      justify-center
     "
   >
     <CheckCircleIcon class="h-8 w-8 mx-auto text-gray-400" />
@@ -23,7 +28,7 @@ defineProps<{
     <p class="mt-1 text-sm text-gray-500">
       {{ description }}
     </p>
-    <div class="mt-6" v-if="slot">
+    <div class="mt-6" v-if="Boolean(slots.default)">
       <slot></slot>
     </div>
   </div>
