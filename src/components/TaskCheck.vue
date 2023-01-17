@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckIcon } from "@heroicons/vue/24/outline";
-import { toRefs, defineEmits } from "vue";
+import { toRefs, defineEmits, watch } from "vue";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -8,11 +8,13 @@ const props = defineProps<{
 
 const checked = toRefs(props).modelValue;
 
-const emit = defineEmits(["update:modelValue"]);
+watch(checked, (value) => emit("change", value));
+
+const emit = defineEmits(["update:modelValue", "change"]);
 </script>
 <template>
   <div class="flex items-center">
-    <div class="pretty p-icon p-round p-smooth p-thick">
+    <div class="pretty p-icon p-round p-thick">
       <input
         type="checkbox"
         :checked="checked"

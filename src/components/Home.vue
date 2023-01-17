@@ -6,6 +6,7 @@ import download from "in-browser-download";
 import QRCodeVue3 from "qrcode-vue3";
 import LZString from "lz-string";
 import GenerateId from "generate-id";
+import { VueDraggableNext } from "vue-draggable-next";
 import {
   flatten,
   template,
@@ -18,6 +19,16 @@ import {
   debounce,
   last,
   findIndex,
+  uniq,
+  filter,
+  partition,
+  sortBy,
+  map,
+  uniqBy,
+  pullAll,
+  difference,
+  entries,
+  values,
 } from "lodash";
 import moment from "moment/min/moment-with-locales";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
@@ -29,6 +40,7 @@ import {
 } from "@headlessui/vue";
 import { EllipsisVerticalIcon } from "@heroicons/vue/20/solid";
 import ActiveTaskBar from "./ActiveTaskBar.vue";
+import Panel from "./Panel.vue";
 import SidePanel from "./SidePanel.vue";
 import Empty from "./Empty.vue";
 import ProgressBar from "./ProgressBar.vue";
@@ -36,6 +48,8 @@ import Settings from "./Settings.vue";
 import Calendar from "./Calendar.vue";
 import TaskDetails from "./TaskDetails.vue";
 import TaskCheck from "./TaskCheck.vue";
+import TaskList from "./TaskList.vue";
+import CommandBar from "./CommandBar.vue";
 import {
   PlusCircleIcon,
   PlayIcon,
@@ -56,7 +70,10 @@ import {
   ArchiveBoxArrowDownIcon,
   ArrowPathIcon,
   SquaresPlusIcon,
+  CursorArrowRaysIcon,
   CalendarIcon,
+  BookOpenIcon,
+  XMarkIcon,
 } from "@heroicons/vue/24/outline";
 import { PlusIcon as PlusIconMini } from "@heroicons/vue/20/solid";
 import { PlusIcon as PlusIconOutline } from "@heroicons/vue/24/outline";
@@ -80,6 +97,7 @@ import {
 } from "@heroicons/vue/24/outline";
 import { getIssues, LinearPlugin } from "@/integrations/Linear";
 import { SessionPlugin } from "@/integrations/Session";
+import TaskCanceledCheck from "./TaskCanceledCheck.vue";
 
 const defaultSettings = {
   lang: "pt-br",
@@ -97,9 +115,47 @@ const openedGroups = ref({});
 
 const settingsOpened = ref(false);
 
+const openTasks = (group) =>
+  filter(
+    Object.assign(
+      {},
+      group.tasks.slice(
+        0,
+        isGroupOpened(group)
+          ? group.tasks.length - 1
+          : data.value.settings.maxTasksPerGroup
+      )
+    ),
+    (task) => !(task.done || task.canceled)
+  );
+
+const finishedTasks = (group) =>
+  group.tasks.filter((task) => task.done || task.canceled).slice(0, 3);
+
 const selectedTasks = ref([]);
 
+const isTaskSelected = (task) => {
+  return selectedTasks.value.includes(task.id);
+};
+
 const idGenerator = new GenerateId();
+
+const handleDragAndDrop = (group, event) => {
+  const originalGroup = getGroupBy(group.id);
+  console.log(event);
+  if (event.added) {
+    event.added.element.order = event.added.newIndex;
+    originalGroup?.tasks.push(event.added.element);
+  } else if (event.removed) {
+    originalGroup?.tasks.splice(event.removed.oldIndex, 1);
+  } else if (event.moved) {
+    const originalTask = find(originalGroup?.tasks, [
+      "id",
+      event.moved.element.id,
+    ]);
+    originalTask.order = event.moved.newIndex;
+  }
+};
 
 const Linear = ref(new LinearPlugin());
 const Session = ref(new SessionPlugin());
@@ -118,9 +174,27 @@ const hash = computed(() => window.location.hash);
 
 const currentUrl = ref("");
 
+const isDragging = ref(null);
+
+// const computedGroups = computed({
+//   get() {
+//     return data.value.groups.map((group) => {
+//       group.sortedTasks = partition(
+//         group.tasks,
+//         (task) => !(task.done || task.canceled)
+//       );
+//       return group;
+//     }
+//   },
+//   set() {
+
+//   }
+// });
+
 const tabs = [
   { id: "groups", name: "Group View", icon: SquaresPlusIcon },
   { id: "calendar", name: "Calendar View", icon: CalendarIcon },
+  { id: "notes", name: "Notes View", icon: BookOpenIcon },
 ];
 
 const colors = [
@@ -140,10 +214,28 @@ const colors = [
   "#f39c12",
 ];
 
+const getNotesForObject = (objectType, object) => {
+  return find(data.values.notes, [
+    ["ownerType", objectType],
+    ["ownerId", object.id],
+  ]);
+};
+
 const data = ref({
   history: [],
   pageTitle: "",
   lastCategory: "",
+  sessions: [],
+  notes: [
+    {
+      id: "sasasasa",
+      createdAt: moment().format(),
+      title: null,
+      content: "My note",
+      ownerType: "task",
+      ownerId: "",
+    },
+  ],
   categories: [
     {
       name: "General",
@@ -166,30 +258,38 @@ const data = ref({
     {
       name: "",
       ignore: false,
-      tasks: [
-        {
-          title: "My Task",
-          description: "",
-          category: "development",
-          done: false,
-          jumped: false,
-          counter: 0,
-        },
-      ],
+      tasks: {
+        active: [
+          {
+            title: "My Task",
+            description: "",
+            category: "development",
+            done: false,
+            jumped: false,
+            counter: 0,
+          },
+        ],
+        finished: [],
+        backlog: [],
+      },
     },
     {
       name: "",
       ignore: false,
-      tasks: [
-        {
-          title: "My First Task",
-          description: "",
-          category: "development",
-          done: false,
-          jumped: false,
-          counter: 0,
-        },
-      ],
+      tasks: {
+        active: [
+          {
+            title: "My First Task",
+            description: "",
+            category: "development",
+            done: false,
+            jumped: false,
+            counter: 0,
+          },
+        ],
+        finished: [],
+        backlog: [],
+      },
     },
   ],
 });
@@ -204,15 +304,10 @@ const isGroupHovered = (group) => {
 
 // Api key authentication
 
-const getTaskTitleInput = (group, task) => {
-  return document.getElementById(`task-name-${group.id}-${task.id}`);
-};
-
-const focusLastTask = (group) => {
+const focusLastTask = (group, task) => {
   data.value.currentView = "groups";
   nextTick(() => {
-    const lastTask = last(group.tasks) as Task;
-    const taskInput = getTaskTitleInput(group, lastTask);
+    const taskInput = getTaskTitleInput(group, task);
 
     nextTick(() => {
       taskInput?.scrollTo();
@@ -262,15 +357,15 @@ const totalTasks = computed(() => {
   return flatten(
     data.value.groups
       .filter((group) => !group.ignore)
-      .map((group) => group.tasks)
-  ).length;
+      .map((group) => group.tasks.active)
+  ).filter((task) => !task.canceled).length;
 });
 
 const completedTasks = computed(() => {
   return flatten(
     data.value.groups
       .filter((group) => !group.ignore)
-      .map((group) => group.tasks)
+      .map((group) => group.tasks.active)
   ).filter((task) => task.done).length;
 });
 
@@ -278,7 +373,7 @@ const skipped = computed(() => {
   return flatten(
     data.value.groups
       .filter((group) => !group.ignore)
-      .map((group) => group.tasks)
+      .map((group) => group.tasks.active)
   ).filter((task) => task.jumped).length;
 });
 
@@ -288,7 +383,7 @@ const remainingSkips = computed(() => {
     flatten(
       data.value.groups
         .filter((group) => !group.ignore)
-        .map((group) => group.tasks)
+        .map((group) => group.tasks.active)
     ).filter((task) => task.jumped).length
   );
 });
@@ -300,7 +395,7 @@ const clearState = () => {
 
   state.groups = state.groups.map((group) => {
     group.tasks = group.tasks
-      .filter((task) => !task.done)
+      .filter((task) => !(task.done || task.canceled))
       .map((task) => {
         task.jumped = false;
 
@@ -319,10 +414,14 @@ class Group {
 
   ignore = false;
 
-  tasks: Task[] = [];
+  tasks: Record<string, any>;
 
   constructor() {
     this.id = idGenerator.generate(20);
+    this.tasks = {
+      active: [],
+      backlog: [],
+    };
   }
 }
 
@@ -335,9 +434,13 @@ const updateUrlWithState = () => {
 
   url.hash = compressedValue;
 
-  console.log(url);
+  // console.log(url);
 
   window.history.pushState({}, "", url);
+};
+
+const getTaskTitleInput = (group, task) => {
+  return document.getElementById(`task-name-${group.id}-${task.id}`);
 };
 
 window.addEventListener(
@@ -353,12 +456,12 @@ const start = (task) => {
   doAction("task.start", task, data.value.settings);
 };
 
-const pickTask = (task, taskIndex, groupIndex) => {
+const pickTask = (task) => {
   task.counter++;
 
   currentTask.value = task;
 
-  data.value.history.push([groupIndex, taskIndex, task.title]);
+  // data.value.history.push([groupIndex, taskIndex, task.title]);
 };
 
 const pickATask = () => {
@@ -426,12 +529,10 @@ const today = computed(() => {
   );
 });
 
-const isActive = (groupIndex, taskIndex) => {
-  return (
-    currentTask.value &&
-    currentTask.value === data.value.groups[groupIndex].tasks[taskIndex]
-  );
+const isActive = (task) => {
+  return currentTask.value && currentTask.value.id === task.id;
 };
+applyFilters;
 
 const c = console;
 
@@ -439,9 +540,9 @@ const isGroupOpened = (group) => {
   return openedGroups.value[group.name] ?? false;
 };
 
-const toggleGroup = (group) => {
+const toggleGroup = (group, value?: boolean) => {
   const isOpened = isGroupOpened(group);
-  openedGroups.value[group.name] = !isOpened;
+  openedGroups.value[group.name] = value ?? !isOpened;
 };
 
 const taskHasCategory = (task, categoryId) => {
@@ -469,14 +570,6 @@ const tagGroupAsCurrent = debounce((group) => {
   data.value.hoveredGroup = group.id;
 }, 100);
 
-const tagTaskAsCurrent = debounce((task) => {
-  task.id = task.id
-    ? task.id
-    : LZString.compressToEncodedURIComponent(task.title);
-  // console.log(task);
-  data.value.hoveredTask = task.id;
-}, 100);
-
 watch(() => data.value.groups, updateUrlWithState, { deep: true });
 
 // onUpdated(updateUrlWithState);
@@ -486,9 +579,19 @@ onMounted(() => {
 
   extractStateFromUrl();
 
+  data.value.groups.map((group) => {
+    group.tasks.finished = [];
+    group.tasks.backlog = group.tasks.backlog ?? [];
+  });
+
+  // console.log(data.value.groups);
+
+  // console.log(computedGroups.value);
+
   if (selectedTask.value) {
-    currentTask.value =
-      data.value.groups[selectedTask.value[0]].tasks[selectedTask.value[1]];
+    // // getNotesForObject("task", selectedTask.value);
+    // currentTask.value =
+    //   data.value.groups[selectedTask.value[0]].tasks[selectedTask.value[1]];
   }
 
   nextTick(() => (loading.value = false));
@@ -498,10 +601,30 @@ const getGroupBy = (value, field = "id") => {
   return find(data.value.groups, [field, value]);
 };
 
-const addTask = (group, task?: Task) => {
-  group.tasks.push(task ?? new Task("", "", data.value.lastCategory));
+const getGroupTasks = (group) => {
+  return flatten(values(group.tasks));
+};
 
-  focusLastTask(group);
+const getTaskBy = (groupId, value, field = "id") => {
+  const group = getGroupBy(groupId) ?? { tasks: { active: [] } };
+  const tasks = getGroupTasks(group);
+  return find(tasks, [field, value]);
+};
+
+const addTask = (group, position = "before", task?: Task) => {
+  toggleGroup(group, true);
+  task = task ?? new Task("", "", data.value.lastCategory);
+  if (!group.tasks?.backlog) {
+    group.tasks.backlog = [];
+  }
+  console.log("pos", position);
+  if (position === "before") {
+    group.tasks.backlog.unshift(task);
+  } else {
+    group.tasks.backlog.push(task);
+  }
+
+  focusLastTask(group, task);
 };
 
 const addGroup = () => {
@@ -511,8 +634,23 @@ const addGroup = () => {
 };
 
 const deleteTask = (group, task) => {
-  const taskIndex = findIndex(group.tasks, ["id", task.id]);
-  group.tasks.splice(taskIndex, 1);
+  let target = "active";
+  let taskIndex = findIndex(group.tasks.active, ["id", task.id]);
+
+  if (taskIndex < 0) {
+    target = "backlog";
+    taskIndex = findIndex(group.tasks.backlog, ["id", task.id]);
+  }
+
+  if (taskIndex >= 0) {
+    // focus next task
+    group.tasks[target].splice(taskIndex, 1);
+    if (taskIndex === 0) {
+      focusLastTask(group, group.tasks[target][taskIndex] ?? { id: "not" });
+    } else {
+      focusLastTask(group, group.tasks[target][taskIndex - 1] ?? { id: "not" });
+    }
+  }
 };
 
 const deleteGroup = (group) => {
@@ -522,8 +660,67 @@ const deleteGroup = (group) => {
 
 const keymap = {
   // 'esc+ctrl' is OK.
+  "shift+esc": (event) => {
+    openedGroups.value = {};
+  },
   x: (event) => {
-    console.log(data.value.hoveredTask);
+    if (selectedTasks.value.includes(data.value.hoveredTask.taskId)) {
+      const index = findIndex(
+        selectedTasks.value,
+        data.value.hoveredTask.taskId
+      );
+      selectedTasks.value.splice(index, 1);
+    } else {
+      selectedTasks.value.push(data.value.hoveredTask.taskId);
+    }
+    selectedTasks.value = uniq(selectedTasks.value);
+    console.log(selectedTasks.value);
+  },
+  "shift+d": (event) => {
+    if (data.value.hoveredTask.taskId) {
+      const task = getTaskBy(
+        data.value.hoveredTask.groupId,
+        data.value.hoveredTask.taskId
+      );
+      task && (task.done = !task.done);
+    }
+  },
+  "shift+i": (event) => {
+    if (data.value.hoveredGroup) {
+      const group = getGroupBy(data.value.hoveredGroup);
+      group.ignore = !group.ignore;
+    }
+  },
+  "shift+c": (event) => {
+    if (data.value.hoveredTask.taskId) {
+      const task = getTaskBy(
+        data.value.hoveredTask.groupId,
+        data.value.hoveredTask.taskId
+      );
+      task && (task.canceled = !task.canceled);
+    }
+  },
+  "shift+p": (event) => {
+    if (data.value.hoveredTask.taskId) {
+      const task = getTaskBy(
+        data.value.hoveredTask.groupId,
+        data.value.hoveredTask.taskId
+      );
+      task && pickTask(task);
+    }
+  },
+  o: (event) => {
+    if (data.value.hoveredGroup) {
+      const group = getGroupBy(data.value.hoveredGroup);
+      toggleGroup(group);
+    }
+  },
+  "shift+o": (event) => {
+    for (const group of data.value.groups) {
+      setTimeout(() => {
+        toggleGroup(group);
+      }, 0);
+    }
   },
   c: (event) => {
     if (data.value.hoveredGroup) {
@@ -538,7 +735,7 @@ const keymap = {
 </script>
 
 <template>
-  <div class="bg-gray-100 pb-24" v-hotkey="keymap">
+  <div class="bg-gray-100 pb-24" v-hotkey="keymap" v-if="true">
     <ProgressBar :completed="completedTasks" :total="totalTasks" />
     <header class="bg-white shadow-sm print:hidden">
       <div class="mx-auto container py-4 px-4 sm:px-6 lg:px-8">
@@ -757,7 +954,6 @@ const keymap = {
           sm:grid
           md:grid-cols-2
           lg:grid-cols-3
-          sm:gap-px sm:divide-y-1
         "
       >
         <div
@@ -803,26 +999,28 @@ const keymap = {
             <!-- <h3 class="text-lg font-medium">
               {{ group.name }}
             </h3> -->
-            <div class="flex justify-between">
+            <div class="flex items-center justify-between">
               <input
                 class="
+                  -mt-2
+                  bg-transparent
+                  py-2
                   text-lg
                   font-medium
                   text-gray-900
                   focus:outline-none
-                  bg-transparent
                 "
                 v-model.lazy="group.name"
                 :id="`group-name-${group.id}`"
                 :placeholder="'Group ' + (groupIndex + 1)"
               />
-              <div v-if="isGroupHovered(group)">Active</div>
-              <div class="flex items-center">
+              <div class="-mr-4 -mt-2 flex items-center">
+                <div v-if="isGroupHovered(group)" class="p-2">
+                  <CheckIcon class="h-5 w-5 text-indigo-700" />
+                </div>
                 <button
                   @click.prevent="() => pullTasks(group)"
                   class="
-                    -my-2
-                    -mr-4
                     hidden
                     items-center
                     rounded-full
@@ -836,12 +1034,10 @@ const keymap = {
                 >
                   <ArrowPathIcon class="h-5 w-5" />
                 </button>
-                <Menu as="div" class="relative ml-3 inline-block text-left">
+                <Menu as="div" class="relative inline-block text-left">
                   <div>
                     <MenuButton
                       class="
-                        -my-2
-                        -mr-4
                         hidden
                         items-center
                         rounded-full
@@ -966,7 +1162,7 @@ const keymap = {
               </div>
             </div>
             <p
-              class="mt-2 text-sm text-gray-500 focus:outline-none"
+              class="mt-1 text-sm text-gray-500 focus:outline-none word-wrap"
               @input="
                 (e) => {
                   group.description = e.target.innerText;
@@ -979,398 +1175,196 @@ const keymap = {
             </p>
           </div>
 
-          <div v-if="!group.tasks.length" class="flex flex-grow">
-            <Empty
-              title="No Tasks"
-              description="Create the first task for this group now."
-            />
-          </div>
-
-          <div
-            v-if="group.tasks.length"
-            class="flex flex-col mt-6 w-full mb-auto pb-4"
-            v-auto-animate
-          >
+          <div class="mt-6 mb-4" v-auto-animate>
             <div
-              class="
-                flex flex-1
-                items-center
-                py-4
-                px-4
-                border-l-4
-                -mx-8
-                group
-                print:border-none
-                transition-all
-              "
-              v-for="(task, taskIndex) in group.tasks"
-              @mouseover="() => tagTaskAsCurrent(task)"
-              :class="[
-                isActive(groupIndex, taskIndex)
-                  ? `${
-                      group.ignore ? 'bg-white' : 'bg-gray-50'
-                    } scale-[104%] shadow-md border border-gray-200 rounded-md transition-transform z-10`
-                  : '',
-                taskIndex >= data.settings.maxTasksPerGroup &&
-                !isGroupOpened(group)
-                  ? 'max-h-0 h-0 sm:py-0 overflow-hidden opacity-0'
-                  : '',
-                task.done ? 'order-last sm:flex' : '',
-              ]"
-              :style="{ borderLeftColor: getCategory(task.category).color }"
-              :key="taskIndex"
+              class="relative z-10 -mr-8 ml-[-28px] mb-[-11px]"
+              v-if="isGroupOpened(group)"
             >
-              <div class="flex flex-1">
-                <TaskCheck v-model="task.done" />
-                <div class="text-sm flex flex-1">
-                  <label
-                    :for="`task-name-${group.id}-${task.id}`"
-                    class="
-                      font-medium
-                      text-gray-700
-                      focus:b-0 focus:outline-none
-                      flex flex-1
-                    "
-                  >
-                    <input
-                      :id="`task-name-${group.id}-${task.id}`"
-                      class="
-                        font-normal
-                        text-gray-700
-                        bg-transparent
-                        focus:border-none focus:outline-none
-                        flex flex-grow flex-1
-                        truncate
-                        mr-2
-                      "
-                      :class="[task.done ? 'line-through opacity-50' : '']"
-                      v-model="task.title"
-                      @dblclick="() => (current.task = task)"
-                      @keyup.prevent.delete="
-                        () => {
-                          if (task.title.length === 0) {
-                            deleteTask(group, task);
-                          }
-                          task.title = task.title.splice(-1);
-                        }
-                      "
-                      @keyup.esc="
-                        () => {
-                          if (task.title.length === 0) {
-                            deleteTask(group, task);
-                          } else {
-                            const input = getTaskTitleInput(group, task);
-                            input?.blur();
-                          }
-                        }
-                      "
-                      @keyup.enter="
-                        () => {
-                          const input = getTaskTitleInput(group, task);
-                          input?.blur();
-                        }
-                      "
-                      @keyup.shift.enter.exact="() => addTask(group)"
-                      placeholder="Task"
-                    />
-                    <span
-                      v-if="task.counter"
-                      class="
-                        inline-flex
-                        items-center
-                        rounded-full
-                        bg-gray-200
-                        px-2.5
-                        py-0.5
-                        text-xs
-                        font-medium
-                        text-gray-800
-                      "
-                      >{{ task.counter }}</span
-                    >
-                  </label>
-                  <span
-                    class="inline-flex flex items-center"
-                    v-html="applyFilters('task.labels', '', task, group)"
-                  ></span>
-                  <span
-                    v-if="task.jumped"
-                    class="
-                      inline-flex
-                      items-center
-                      rounded
-                      bg-gray-100
-                      px-2
-                      mr-1
-                      inline-block
-                      py-0.5
-                      text-xs
-                      font
-                      text-gray-800
-                    "
-                    >Skipped once</span
-                  >
-
-                  <Menu
-                    as="div"
-                    class="relative inline-block text-left justify-self-end"
-                  >
-                    <div>
-                      <MenuButton
-                        class="
-                          hidden
-                          group-hover:flex
-                          items-center
-                          rounded-full
-                          text-gray-400
-                          hover:text-gray-600
-                          focus:outline-none
-                          focus:ring-2
-                          focus:ring-indigo-500
-                          focus:ring-offset-2
-                          focus:ring-offset-gray-100
-                        "
-                      >
-                        <span class="sr-only">Open options</span>
-                        <EllipsisVerticalIcon
-                          class="h-5 w-5"
-                          aria-hidden="true"
-                        />
-                      </MenuButton>
-                    </div>
-
-                    <transition
-                      enter-active-class="transition ease-out duration-100"
-                      enter-from-class="transform opacity-0 scale-95"
-                      enter-to-class="transform opacity-100 scale-100"
-                      leave-active-class="transition ease-in duration-75"
-                      leave-from-class="transform opacity-100 scale-100"
-                      leave-to-class="transform opacity-0 scale-95"
-                    >
-                      <MenuItems
-                        class="
-                          absolute
-                          right-0
-                          z-10
-                          mt-2
-                          w-56
-                          origin-top-right
-                          divide-y divide-gray-100
-                          rounded-md
-                          bg-white
-                          shadow-lg
-                          ring-1 ring-black ring-opacity-5
-                          focus:outline-none
-                        "
-                      >
-                        <div class="py-1">
-                          <MenuItem v-slot="{ active }">
-                            <a
-                              @click.prevent="
-                                () => pickTask(task, taskIndex, groupIndex)
-                              "
-                              href="#"
-                              :class="[
-                                active
-                                  ? 'bg-gray-100 text-gray-900'
-                                  : 'text-gray-700',
-                                'group flex items-center px-4 py-2 text-sm',
-                              ]"
-                            >
-                              <BoltIcon
-                                class="
-                                  mr-3
-                                  h-5
-                                  w-5
-                                  text-gray-400
-                                  group-hover:text-gray-500
-                                "
-                                aria-hidden="true"
-                              />
-                              Pick Task
-                            </a>
-                          </MenuItem>
-                        </div>
-                        <div class="py-1">
-                          <small class="px-4 py-1 block">Category</small>
-                          <MenuItem
-                            v-slot="{ active }"
-                            v-for="(category, index) in data.categories"
-                            :key="index"
-                          >
-                            <a
-                              href="#"
-                              @click.prevent="
-                                () => {
-                                  data.lastCategory = snakeCase(category.name);
-                                  task.category = snakeCase(category.name);
-                                }
-                              "
-                              :class="[
-                                active
-                                  ? 'bg-gray-100 text-gray-900'
-                                  : 'text-gray-700',
-                                'group flex items-center px-4 py-2 text-sm justify-between',
-                              ]"
-                            >
-                              <span class="flex">
-                                <TagIcon
-                                  class="mr-3 h-5 w-5"
-                                  :style="{ color: category.color }"
-                                  aria-hidden="true"
-                                />
-                                {{ category.name }}
-                              </span>
-                              <CheckIcon
-                                v-if="taskHasCategory(task, category.name)"
-                                class="h-3 w-3 text-green-700"
-                              />
-                            </a>
-                          </MenuItem>
-                        </div>
-
-                        <!-- Move Between Groups -->
-                        <div class="py-1">
-                          <small class="px-4 py-1 block">Move to</small>
-                          <MenuItem
-                            v-slot="{ active }"
-                            v-for="(someGroup, someGroupIndex) in data.groups"
-                            :key="someGroupIndex"
-                          >
-                            <a
-                              href="#"
-                              @click.prevent="
-                                () => {
-                                  // Copy task
-                                  const taskCopy = Object.assign({}, task);
-                                  // Remove from existing group
-                                  group.tasks.splice(taskIndex, 1);
-                                  // Add to new group
-                                  someGroup.tasks.push(taskCopy);
-                                }
-                              "
-                              :class="[
-                                active
-                                  ? 'bg-gray-100 text-gray-900'
-                                  : 'text-gray-700',
-                                'group flex items-center px-4 py-2 text-sm justify-between',
-                              ]"
-                            >
-                              <span class="flex">
-                                <component
-                                  :is="
-                                    someGroup.ignore
-                                      ? ArchiveBoxArrowDownIcon
-                                      : ClipboardDocumentCheckIcon
-                                  "
-                                  class="
-                                    mr-3
-                                    h-5
-                                    w-5
-                                    text-gray-400
-                                    group-hover:text-gray-500
-                                  "
-                                  aria-hidden="true"
-                                />
-                                {{ someGroup.name }}
-                              </span>
-                              <CheckIcon
-                                v-if="someGroupIndex === groupIndex"
-                                class="h-3 w-3 text-green-700"
-                              />
-                            </a>
-                          </MenuItem>
-                        </div>
-
-                        <div class="py-1">
-                          <MenuItem v-slot="{ active }">
-                            <a
-                              @click.prevent="() => deleteTask(group, task)"
-                              href="#"
-                              :class="[
-                                active
-                                  ? 'bg-gray-100 text-gray-900'
-                                  : 'text-gray-700',
-                                'group flex items-center px-4 py-2 text-sm',
-                              ]"
-                            >
-                              <TrashIcon
-                                class="
-                                  mr-3
-                                  h-5
-                                  w-5
-                                  text-gray-400
-                                  group-hover:text-gray-500
-                                "
-                                aria-hidden="true"
-                              />
-                              Delete
-                            </a>
-                          </MenuItem>
-                        </div>
-                      </MenuItems>
-                    </transition>
-                  </Menu>
-                </div>
+              <div
+                class="absolute inset-0 flex items-center"
+                aria-hidden="true"
+              >
+                <div class="w-full border-t border-gray-200" />
               </div>
+              <div class="relative flex justify-center items-center">
+                <span
+                  :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
+                  class="
+                    px-2
+                    py-0.5
+                    text-xs text-gray-400
+                    border border-gray-200
+                    rounded-full
+                  "
+                  >Active</span
+                >
+              </div>
+            </div>
+            <!-- Open Tasks -->
+            <TaskList
+              v-model="group.tasks.active"
+              :display-empty-block="true"
+              :group="group"
+              :active-task="selectedTask"
+              :selected-tasks="selectedTasks"
+              :categories="data.categories"
+              :max-tasks="data.settings.maxTasksPerGroup"
+              :class="['-mx-8', group.ignore ? 'bg-gray-50' : 'bg-white']"
+              :item-classes="group.ignore ? 'bg-gray-50' : 'bg-white'"
+              scope="tasks"
+              :is-task-active="
+                (task) => currentTask && currentTask.id === task.id
+              "
+              @task:mouseover="
+                (task, group) =>
+                  (data.hoveredTask = { groupId: group.id, taskId: task.id })
+              "
+              @task:delete="(task, group) => deleteTask(group, task)"
+              @task:create="
+                (group, position) => {
+                  addTask(group, position);
+                }
+              "
+              @list:overflow="
+                (tasks) => {
+                  group.tasks.backlog = group.tasks.backlog ?? [];
+                  group.tasks.backlog.unshift(...tasks);
+                }
+              "
+            />
+            <!-- End Open Tasks -->
+            <!-- 
+            <div
+              v-if="isGroupOpened(group)"
+              class="-mx-8 border-l-4 border-l-gray-800"
+            >
+              <div class="border-t border-gray-200"></div>
+            </div> -->
+
+            <div
+              class="relative z-10 -mr-8 ml-[-28px] my-[-11px]"
+              v-if="isGroupOpened(group)"
+            >
+              <div
+                class="absolute inset-0 flex items-center"
+                aria-hidden="true"
+              >
+                <div class="w-full border-t border-gray-200" />
+              </div>
+              <div class="relative flex justify-center items-center">
+                <span
+                  :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
+                  class="
+                    px-2
+                    py-0.5
+                    text-xs text-gray-400
+                    border border-gray-200
+                    rounded-full
+                  "
+                  >Backlog</span
+                >
+              </div>
+            </div>
+
+            <!-- Backlog Tasks -->
+            <TaskList
+              v-if="isGroupOpened(group)"
+              v-model="group.tasks.backlog"
+              :group="group"
+              :selected-tasks="selectedTasks"
+              :categories="data.categories"
+              class="-mx-8"
+              :class="[group.ignore ? 'bg-white' : 'bg-gray-50']"
+              :item-classes="group.ignore ? 'bg-white' : 'bg-gray-50'"
+              :is-task-active="
+                (task) => currentTask && currentTask.id === task.id
+              "
+              scope="tasks"
+              @task:mouseover="
+                (task, group) =>
+                  (data.hoveredTask = { groupId: group.id, taskId: task.id })
+              "
+              @task:delete="(task, group) => deleteTask(group, task)"
+              @task:create="
+                (group, position) => {
+                  addTask(group, position);
+                }
+              "
+            />
+            <!-- End Backlog Tasks -->
+            <div
+              v-if="isGroupOpened(group)"
+              class="-mx-8 border-l-4 border-l-gray-300"
+            >
+              <div class="border-t border-gray-200"></div>
             </div>
           </div>
 
           <div
-            v-if="group.tasks.length > data.settings.maxTasksPerGroup"
-            class=""
+            class="
+              align-self
+              mt-auto
+              -mb-4
+              -mr-5
+              -ml-3
+              flex
+              items-center
+              justify-between
+            "
           >
-            <a
-              href="#"
-              class="text-xs text-gray-400 flex justify-items-center"
-              @click.prevent="
-                () => {
-                  toggleGroup(group);
-                }
-              "
-            >
-              <component
-                :is="
-                  isGroupOpened(group) ? ArrowUpCircleIcon : ArrowDownCircleIcon
+            <div v-if="group.tasks?.backlog?.length" class="">
+              <a
+                href="#"
+                class="text-xs text-gray-400 flex justify-items-center"
+                @click.prevent="
+                  () => {
+                    toggleGroup(group);
+                  }
                 "
-                class="h-4 w-4 mr-1"
-                aria-hidden="true"
-              />
-              <span
-                v-text="
-                  isGroupOpened(group) ? 'Hide extra Tasks' : 'See all Tasks'
-                "
-              ></span>
-            </a>
-          </div>
+              >
+                <component
+                  :is="
+                    isGroupOpened(group)
+                      ? ArrowUpCircleIcon
+                      : ArrowDownCircleIcon
+                  "
+                  class="h-4 w-4 mr-1"
+                  aria-hidden="true"
+                />
+                <span
+                  v-text="
+                    isGroupOpened(group)
+                      ? 'Hide the backlog tasks'
+                      : 'See the backlog tasks'
+                  "
+                ></span>
+              </a>
+            </div>
+            <div v-else>&nbsp;</div>
 
-          <div class="flex justify-end" v-if="group.tasks.length">
-            <button
-              type="button"
-              class="
-                inline-flex
-                items-center
-                rounded-full
-                border border-transparent
-                bg-indigo-600
-                p-1
-                text-white
-                shadow-sm
-                hover:bg-indigo-700
-                focus:outline-none
-                focus:ring-2
-                focus:ring-indigo-500
-                focus:ring-offset-2
-              "
-              @click.prevent="
-                () => {
-                  group.tasks.push(new Task('', '', data.lastCategory));
-                  focusLastTask(group);
-                }
-              "
-            >
-              <PlusIconMini class="h-5 w-5" aria-hidden="true" />
-            </button>
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="
+                  inline-flex
+                  items-center
+                  rounded-full
+                  border border-transparent
+                  bg-indigo-600
+                  p-1
+                  text-white
+                  shadow-sm
+                  hover:bg-indigo-700
+                  focus:outline-none
+                  focus:ring-2
+                  focus:ring-indigo-500
+                  focus:ring-offset-2
+                "
+                @click.prevent="() => addTask(group)"
+              >
+                <PlusIconMini class="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1523,39 +1517,56 @@ const keymap = {
       </button>
     </ActiveTaskBar>
 
-    <SidePanel title="History" :open="sidePanelOpen">
-      <div>
-        <table>
-          <thead>
-            <tr>
-              <th>Group</th>
-              <th>Task #</th>
-              <th>Task</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(entry, index) in data.history" :key="index">
-              <td>{{ entry[0] + 1 }}</td>
-              <td>{{ entry[1] + 1 }}</td>
-              <td>{{ entry[2] }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </SidePanel>
+    <Teleport to="#modals">
+      <Panel />
+      <!-- <SidePanel title="History" :open="true">
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Task #</th>
+                <th>Task</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(entry, index) in data.history" :key="index">
+                <td>{{ entry[0] + 1 }}</td>
+                <td>{{ entry[1] + 1 }}</td>
+                <td>{{ entry[2] }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </SidePanel> -->
+    </Teleport>
     <TaskDetails v-if="current.task" v-model="current" />
-    <!-- <Settings
+    <!-- <CommandBar /> -->
+    <Settings
       :open="settingsOpened"
       :categories="data.categories"
       @update:categories="(categories) => (data.categories = categories)"
       @close="() => (settingsOpened = false)"
       v-model="data.settings"
-    ></Settings> -->
+    ></Settings>
   </div>
 </template>
 
 <style scoped>
 .pretty.p-icon .state .icon {
   border-width: 2px !important;
+}
+.ghost {
+  @apply relative bg-gray-50 transition-all;
+}
+
+.ghost::after {
+  @apply absolute bg-gray-50 inset-y-2 inset-x-4 flex items-center justify-center border-2 border-gray-200 border-dashed;
+  content: " ";
+}
+
+.grayscale {
+  -webkit-filter: grayscale(80%); /* Safari 6.0 - 9.0 */
+  filter: grayscale(80%);
 }
 </style>

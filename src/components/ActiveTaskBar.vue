@@ -86,11 +86,11 @@ defineProps<{
             <span class="rounded-lg bg-indigo-800 p-2 hidden md:flex">
               <CheckCircleIcon class="h-6 w-6 text-white" aria-hidden="true" />
             </span>
-            <p class="ml-3 truncate text-white flex gap-2">
+            <p class="ml-3 text-white flex gap-2">
               <span class="font-medium">{{ task.title }}</span>
               <span
                 v-if="task.description"
-                class="hidden md:inline text-indigo-200"
+                class="hidden md:inline text-indigo-200 w-56 truncate"
                 >{{ task.description }}</span
               >
             </p>

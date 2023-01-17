@@ -18,6 +18,7 @@ import {
 } from "@headlessui/vue";
 import { CheckIcon } from "@heroicons/vue/24/outline";
 import { isNull } from "lodash";
+import TaskCheck from "./TaskCheck.vue";
 
 const props = defineProps<{
   modelValue?: Record<string, any>;

@@ -39,6 +39,7 @@
     "vue": "^3.2.45",
     "vue-cal": "^4.8.1",
     "vue-colour-picker": "^0.0.5",
+    "vue-draggable-next": "^2.1.1",
     "vuedraggable": "^4"
   },
   "devDependencies": {
