@@ -4,12 +4,12 @@ import TaskCheck from "./TaskCheck.vue";
 import TaskCanceledCheck from "./TaskCanceledCheck.vue";
 import Empty from "./Empty.vue";
 import { toRefs, defineEmits, onMounted, onUpdated } from "vue";
-import { filter, partition, remove, snakeCase } from "lodash";
+import { filter, partition, remove, snakeCase, isNull } from "lodash";
 import { applyFilters } from "@wordpress/hooks";
 import { VueDraggableNext } from "vue-draggable-next";
 
 const props = defineProps<{
-  activeTask?: Record<string, any>;
+  pickedTask?: Record<string, any>;
   selectedTasks?: Record<string, any>[];
   group: Record<string, any>;
   categories: Array<Record<any, any>>;
@@ -19,13 +19,12 @@ const props = defineProps<{
   itemActiveClasses?: string | string[];
   scope: string;
   displayEmptyBlock?: boolean;
-  isTaskActive?: (task: any) => boolean;
 }>();
 
 const {
   modelValue,
   selectedTasks,
-  activeTask,
+  pickedTask,
   group,
   categories,
   scope,
@@ -53,9 +52,8 @@ const getTaskTitleInput = (group, task) => {
   return document.getElementById(`task-name-${group.id}-${task.id}`);
 };
 
-const isActive = (task) => {
-  return false;
-  return currentTask.value && currentTask.value.id === task.id;
+const isTaskActive = (task) => {
+  return pickedTask?.value?.id === task.id;
 };
 
 const emit = defineEmits([
@@ -145,7 +143,7 @@ onMounted(checkOverflow);
             'bg-white',
             itemClasses ?? '',
             isTaskSelected(task) ? 'bg-gray-100' : '',
-            isTaskActive && isTaskActive(task)
+            isTaskActive(task)
               ? `${
                   group.ignore ? 'bg-white' : 'bg-gray-50'
                 } scale-[104%] shadow-md border border-gray-200 rounded-md transition-transform z-10`

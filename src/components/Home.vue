@@ -29,6 +29,7 @@ import {
   difference,
   entries,
   values,
+  isNull,
 } from "lodash";
 import moment from "moment/min/moment-with-locales";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
@@ -394,7 +395,14 @@ const clearState = () => {
   });
 
   state.groups = state.groups.map((group) => {
-    group.tasks = group.tasks
+    group.tasks.active = group.tasks.active
+      .filter((task) => !(task.done || task.canceled))
+      .map((task) => {
+        task.jumped = false;
+
+        return task;
+      });
+    group.tasks.backlog = group.tasks.backlog
       .filter((task) => !(task.done || task.canceled))
       .map((task) => {
         task.jumped = false;
@@ -767,7 +775,7 @@ const keymap = {
             />
           </div>
           <div class="mt-4 flex md:mt-0 md:ml-4">
-            <span class="isolate inline-flex rounded-md">
+            <!-- <span class="isolate inline-flex rounded-md">
               <button
                 type="button"
                 class="
@@ -811,7 +819,7 @@ const keymap = {
                   >{{ remainingSkips }}</span
                 >
               </button>
-            </span>
+            </span> -->
             <button @click.prevent="() => (settingsOpened = true)">
               Settings
             </button>
@@ -912,14 +920,18 @@ const keymap = {
                 (data.currentView ?? 'groups') === tab.id
                   ? 'bg-gray-200 text-gray-800'
                   : 'text-gray-600 hover:text-gray-800',
-                'flex items-center px-3 py-2 font-medium text-sm rounded-md',
+                'flex items-center px-3 py-2 font-medium text-sm rounded-md group',
               ]"
               :aria-current="
                 (data.currentView ?? 'groups') === tab.id ? 'page' : undefined
               "
             >
-              <component :is="tab.icon" class="mr-1 h-4 w-4" />
-              {{ tab.name }}
+              <component :is="tab.icon" class="h-4 w-4" />
+              <span
+                :class="(data.currentView ?? 'groups') === tab.id ? '' : ''"
+                class="ml-2"
+                >{{ tab.name }}</span
+              >
             </a>
           </nav>
         </div>
@@ -1212,9 +1224,7 @@ const keymap = {
               :class="['-mx-8', group.ignore ? 'bg-gray-50' : 'bg-white']"
               :item-classes="group.ignore ? 'bg-gray-50' : 'bg-white'"
               scope="tasks"
-              :is-task-active="
-                (task) => currentTask && currentTask.id === task.id
-              "
+              :picked-task="currentTask"
               @task:mouseover="
                 (task, group) =>
                   (data.hoveredTask = { groupId: group.id, taskId: task.id })
@@ -1276,9 +1286,7 @@ const keymap = {
               class="-mx-8"
               :class="[group.ignore ? 'bg-white' : 'bg-gray-50']"
               :item-classes="group.ignore ? 'bg-white' : 'bg-gray-50'"
-              :is-task-active="
-                (task) => currentTask && currentTask.id === task.id
-              "
+              :picked-task="currentTask"
               scope="tasks"
               @task:mouseover="
                 (task, group) =>
@@ -1332,11 +1340,7 @@ const keymap = {
                   aria-hidden="true"
                 />
                 <span
-                  v-text="
-                    isGroupOpened(group)
-                      ? 'Hide the backlog tasks'
-                      : 'See the backlog tasks'
-                  "
+                  v-text="isGroupOpened(group) ? 'Hide backlog' : 'See backlog'"
                 ></span>
               </a>
             </div>

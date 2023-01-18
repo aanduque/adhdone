@@ -4,7 +4,7 @@ import { toRefs, defineEmits } from "vue";
 </script>
 <template>
   <div class="flex items-center opacity-40">
-    <div class="pretty p-icon p-round p-smooth p-thick">
+    <div class="pretty p-icon p-round p-thick">
       <input type="checkbox" :checked="true" />
       <div class="state">
         <XMarkIcon class="icon" aria-hidden="true" />
