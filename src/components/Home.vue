@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUpdated, ref, computed, nextTick, watch } from "vue";
 import { applyFilters, doAction } from "@wordpress/hooks";
-import imgBgUrl from "@/../public/groups-bg.png";
+import imgBgUrl from "@/assets/groups-bg.png";
 import download from "in-browser-download";
 import QRCodeVue3 from "qrcode-vue3";
 import LZString from "lz-string";
@@ -481,11 +481,13 @@ const pickATask = () => {
     return pickATask();
   }
 
-  const randomTaskIndex = Math.floor(Math.random() * pickedGroup.tasks.length);
+  const randomTaskIndex = Math.floor(
+    Math.random() * pickedGroup.tasks.active.length
+  );
 
-  const pickedTask = pickedGroup.tasks[randomTaskIndex];
+  const pickedTask = pickedGroup.tasks.active[randomTaskIndex];
 
-  if (pickedTask.done) {
+  if (pickedTask.done || pickedTask.canceled) {
     return pickATask();
   }
 
