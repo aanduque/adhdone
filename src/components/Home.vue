@@ -67,7 +67,28 @@ const defaultSettings = {
   actionStart:
     "session:///start?intent={{taskTitle}}&duration={{duration}}&notes={{taskDescription}}&categoryName={{taskCategory}}",
 };
+
 const openedGroups = ref({});
+
+const sessionEndNotificationCounter = ref(0);
+
+function updateTabTitle(number) {
+  var originalTitle = document.title;
+  // document.title = "(" + number + ") " + originalTitle;
+  // document.getElementsByTagName("title")[0].innerHTML = "(" + number + ") " + originalTitle;
+  document.getElementById("favicon")?.remove();
+  document.getElementById("number-favicon")?.remove();
+  var link = document.createElement("link");
+  link.type = "image/x-icon";
+  link.rel = "shortcut icon";
+  link.id = "number-favicon";
+  link.href =
+    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='rgb(0, 128, 0)'/><text x='50%' y='50%' text-anchor='middle' fill='white' font-size='14' font-family='Arial' dy='.3em'>%n</text></svg>".replace(
+      "%n",
+      number
+    );
+  document.getElementsByTagName("head")[0].appendChild(link);
+}
 
 const settingsOpened = ref(false);
 
@@ -194,6 +215,7 @@ const data = ref({
       tasks: {
         active: [
           {
+            id: "firstTask",
             title: "My Task",
             description: "",
             category: "development",
@@ -212,7 +234,8 @@ const data = ref({
       tasks: {
         active: [
           {
-            title: "My First Task",
+            id: "secondTask",
+            title: "My Second Task",
             description: "",
             category: "development",
             done: false,
@@ -393,12 +416,19 @@ class Session {
   taskId?: string;
   task?: Record<any, any>;
   startedAt?: any;
+  endedAt?: any;
   constructor(task) {
     this.taskId = task.id;
     this.task = task;
     this.startedAt = Date.now();
   }
 }
+
+const endCurrentSession = () => {
+  data.value.currentSession.endedAt = Date.now();
+  data.value.sessions.push(data.value.currentSession);
+  data.value.currentSession = null;
+};
 
 const start = (task) => {
   console.log(`Starting task "${task.title}"`);
@@ -464,6 +494,7 @@ const jump = () => {
 };
 
 const completeTaskAndPickNext = () => {
+  endCurrentSession();
   pickATask();
   doAction("task.next", data.value.settings);
 };
@@ -516,18 +547,39 @@ const tagGroupAsCurrent = debounce((group) => {
 
 watch(() => data.value.groups, updateUrlWithState, { deep: true });
 
+function sendNotification(title, options) {
+  if (!("Notification" in window)) {
+    console.log("This browser does not support notifications.");
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    new Notification(title, options);
+  } else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then(function (permission) {
+      if (permission === "granted") {
+        new Notification(title, options);
+      }
+    });
+  }
+}
+
 onMounted(() => {
   extractStateFromUrl();
 
   setInterval(() => {
     if (data.value.currentSession) {
       const now = Date.now();
-      secondsLeftInSeconds.value = Math.floor(
-        (data.value.currentSession.startedAt +
-          data.value.settings.pomodoroLength * 60 * 1000 -
-          now) /
-          1000
-      );
+      const millisecondsLeft =
+        data.value.currentSession.startedAt +
+        data.value.settings.pomodoroLength * 60 * 1000 -
+        now;
+      secondsLeftInSeconds.value =
+        millisecondsLeft >= 0
+          ? Math.round(millisecondsLeft / 1000)
+          : Math.round((now - data.value.currentSession.startedAt) / 1000);
+
+      updateTabTitle(Math.round(secondsLeftInSeconds.value / 60));
     }
   }, 1000);
 
@@ -888,7 +940,7 @@ const keymap = {
           sm:gap-px sm:divide-y-0
         "
       >
-        <Calendar />
+        <Calendar :sessions="data.sessions" />
       </div>
       <div
         v-if="data.currentView === 'groups'"
@@ -1387,7 +1439,7 @@ const keymap = {
         </span>
       </button>
       <a
-        v-if="currentTask"
+        v-if="currentTask && !data.currentSession"
         @click.prevent="() => start(currentTask)"
         class="
           flex
@@ -1413,7 +1465,7 @@ const keymap = {
         >
       </a>
       <a
-        v-if="currentTask"
+        v-if="currentTask && data.currentSession"
         @click.prevent="completeTaskAndPickNext"
         class="
           flex
@@ -1464,7 +1516,7 @@ const keymap = {
     </ActiveTaskBar>
 
     <Teleport to="#modals">
-      <Panel />
+      <!-- <Panel /> -->
       <!-- <SidePanel title="History" :open="true">
         <div>
           <table>

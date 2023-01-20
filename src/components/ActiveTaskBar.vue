@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { XMarkIcon, CheckCircleIcon } from "@heroicons/vue/24/outline";
+import {
+  XMarkIcon,
+  CheckCircleIcon,
+  ClockIcon,
+} from "@heroicons/vue/24/outline";
 import moment from "moment";
 import momentDurationFormat from "moment-duration-format";
 
@@ -93,11 +97,25 @@ const formatDuration = (duration) => {
         <div class="flex flex-wrap items-center justify-between">
           <!-- Item -->
           <div class="flex w-0 flex-1 items-center" v-if="task">
-            <span class="hidden rounded-lg bg-indigo-800 p-2 md:flex">
-              <CheckCircleIcon class="h-6 w-6 text-white" aria-hidden="true" />
-              <span class="ml-1 font-mono font-medium text-white">{{
-                formatDuration(elapsedTime)
-              }}</span>
+            <span
+              class="hidden rounded-lg bg-indigo-800 p-2 md:flex"
+              v-auto-animate
+            >
+              <ClockIcon
+                v-if="session"
+                class="h-6 w-6 text-white"
+                aria-hidden="true"
+              />
+              <CheckCircleIcon
+                v-else
+                class="h-6 w-6 text-white"
+                aria-hidden="true"
+              />
+              <span
+                v-if="session"
+                class="ml-1 font-mono font-medium text-white"
+                >{{ formatDuration(elapsedTime) }}</span
+              >
             </span>
             <p class="ml-3 flex gap-2 text-white">
               <span class="font-medium">{{ task.title }}</span>

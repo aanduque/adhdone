@@ -4,13 +4,36 @@ import {
   ClockIcon,
   Square2StackIcon,
 } from "@heroicons/vue/24/outline";
-import { nextTick, ref } from "vue";
+import { nextTick, ref, toRefs, onMounted, computed } from "vue";
 import VueCal from "vue-cal";
 import "vue-cal/dist/vuecal.css";
+import moment from "moment";
 
 const c = console;
 
 const vuecal = ref(null);
+
+const props = defineProps<{
+  sessions: any;
+}>();
+
+const { sessions } = toRefs(props);
+
+const events = computed(() =>
+  sessions.value.map((session) => {
+    return {
+      start: moment(session.startedAt).format("YYYY-MM-DD HH:mm"),
+      end: moment(session.endedAt).format("YYYY-MM-DD HH:mm"),
+      // You can also define event dates with Javascript Date objects:
+      // start: new Date(2018, 11 - 1, 16, 10, 30),
+      // end: new Date(2018, 11 - 1, 16, 11, 30),
+      title: "Doctor appointment",
+      content: '<i class="icon material-icons">local_hospital</i>',
+      class: "health",
+      split: "sessions",
+    };
+  })
+);
 
 // `timeCellHeight` is set to 26 in the component data.
 const scrollToCurrentTime = (calRef) => {
@@ -31,19 +54,23 @@ const scrollToTop = () => {
   calendar.scrollTo({ top: 0, behavior: "smooth" });
 };
 
-const events = ref([
-  {
-    start: "2023-01-15 10:30",
-    end: "2023-01-15 11:30",
-    // You can also define event dates with Javascript Date objects:
-    // start: new Date(2018, 11 - 1, 16, 10, 30),
-    // end: new Date(2018, 11 - 1, 16, 11, 30),
-    title: "Doctor appointment",
-    content: '<i class="icon material-icons">local_hospital</i>',
-    class: "health",
-    split: 1,
-  },
-]);
+onMounted(() => {
+  console.log(events.value);
+});
+
+// const events = ref([
+//   {
+//     start: "2023-01-15 10:30",
+//     end: "2023-01-15 11:30",
+//     // You can also define event dates with Javascript Date objects:
+//     // start: new Date(2018, 11 - 1, 16, 10, 30),
+//     // end: new Date(2018, 11 - 1, 16, 11, 30),
+//     title: "Doctor appointment",
+//     content: '<i class="icon material-icons">local_hospital</i>',
+//     class: "health",
+//     split: 1,
+//   },
+// ]);
 
 const splits = [
   {
@@ -85,7 +112,7 @@ const splits = [
         :time-from="1 * 60"
         height="600"
         :time-step="15"
-        :time-to="20 * 60"
+        :time-to="23 * 60"
         :disable-views="['years', 'year', 'week', 'month']"
         active-view="day"
         :cell-click-hold="false"
