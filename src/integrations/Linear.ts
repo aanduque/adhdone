@@ -2,12 +2,12 @@ import { addFilter } from "@wordpress/hooks";
 
 const endpoint = "https://api.linear.app/graphql";
 
-const query = (query) => {
+const query = (query, accessToken = "") => {
   const variables = {};
 
   const headers = {
     "Content-Type": "application/json",
-    Authorization: import.meta.env.VITE_LINEAR_PERSONAL_ACCESS_TOKEN,
+    Authorization: accessToken,
   };
 
   const options = {
@@ -19,7 +19,7 @@ const query = (query) => {
   return fetch(endpoint, options).then((res) => res.json());
 };
 
-const getIssues = () => {
+const getIssues = (accessToken = "") => {
   const queryArgs = `query { 
     issues(filter: { 
       assignee: { email: { eq: "arindo@wpultimo.com" } }
@@ -34,15 +34,17 @@ const getIssues = () => {
     } 
   }`;
 
-  return query(queryArgs);
+  return query(queryArgs, accessToken);
 };
 
 class LinearPlugin {
+  accessToken?: string;
   supports() {
     return ["pullTasks"];
   }
 
-  constructor() {
+  constructor(accessToken?: string) {
+    this.accessToken = accessToken;
     this.hooks();
   }
 
@@ -56,9 +58,9 @@ class LinearPlugin {
       : "";
   }
 
-  pullTasks() {
+  pullTasks(accessToken?: string) {
     return new Promise((resolve) =>
-      getIssues().then((results) =>
+      getIssues(accessToken ?? this.accessToken).then((results) =>
         resolve(
           results.data.issues.nodes.map((issue) => {
             return {

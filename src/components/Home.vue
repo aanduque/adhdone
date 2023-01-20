@@ -1,35 +1,23 @@
 <script setup lang="ts">
-import { onMounted, onUpdated, ref, computed, nextTick, watch } from "vue";
+import { onMounted, ref, computed, nextTick, watch } from "vue";
 import { applyFilters, doAction } from "@wordpress/hooks";
 import imgBgUrl from "@/assets/groups-bg.png";
 import download from "in-browser-download";
 import QRCodeVue3 from "qrcode-vue3";
 import LZString from "lz-string";
 import GenerateId from "generate-id";
-import { VueDraggableNext } from "vue-draggable-next";
 import {
   flatten,
-  template,
-  templateSettings,
   capitalize,
   snakeCase,
   defaultsDeep,
-  get,
   find,
   debounce,
   last,
   findIndex,
   uniq,
   filter,
-  partition,
-  sortBy,
-  map,
-  uniqBy,
-  pullAll,
-  difference,
-  entries,
   values,
-  isNull,
 } from "lodash";
 import moment from "moment/min/moment-with-locales";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
@@ -39,68 +27,35 @@ import {
   SwitchGroup,
   SwitchLabel,
 } from "@headlessui/vue";
-import { EllipsisVerticalIcon } from "@heroicons/vue/20/solid";
 import ActiveTaskBar from "./ActiveTaskBar.vue";
 import Panel from "./Panel.vue";
-import SidePanel from "./SidePanel.vue";
-import Empty from "./Empty.vue";
 import ProgressBar from "./ProgressBar.vue";
 import Settings from "./Settings.vue";
 import Calendar from "./Calendar.vue";
 import TaskDetails from "./TaskDetails.vue";
-import TaskCheck from "./TaskCheck.vue";
 import TaskList from "./TaskList.vue";
-import CommandBar from "./CommandBar.vue";
 import {
   PlusCircleIcon,
   PlayIcon,
   ForwardIcon,
-  PlusIcon,
   BoltIcon,
   CheckCircleIcon,
   CheckIcon,
-  EllipsisHorizontalIcon,
-  CogIcon,
   Cog8ToothIcon,
-  EllipsisHorizontalCircleIcon,
   ArrowDownCircleIcon,
   ArrowUpCircleIcon,
-  TagIcon,
-  RectangleGroupIcon,
-  ClipboardDocumentCheckIcon,
-  ArchiveBoxArrowDownIcon,
   ArrowPathIcon,
   SquaresPlusIcon,
-  CursorArrowRaysIcon,
   CalendarIcon,
   BookOpenIcon,
-  XMarkIcon,
 } from "@heroicons/vue/24/outline";
 import { PlusIcon as PlusIconMini } from "@heroicons/vue/20/solid";
-import { PlusIcon as PlusIconOutline } from "@heroicons/vue/24/outline";
-import {
-  ArchiveBoxIcon,
-  ArrowRightCircleIcon,
-  ChevronDownIcon,
-  DocumentDuplicateIcon,
-  HeartIcon,
-  PencilSquareIcon,
-  UserPlusIcon,
-} from "@heroicons/vue/20/solid";
-import {
-  AcademicCapIcon,
-  BanknotesIcon,
-  CheckBadgeIcon,
-  ClockIcon,
-  ReceiptRefundIcon,
-  UsersIcon,
-  TrashIcon,
-} from "@heroicons/vue/24/outline";
-import { getIssues, LinearPlugin } from "@/integrations/Linear";
+import { TrashIcon } from "@heroicons/vue/24/outline";
+import { LinearPlugin } from "@/integrations/Linear";
 import { SessionPlugin } from "@/integrations/Session";
-import TaskCanceledCheck from "./TaskCanceledCheck.vue";
 
 const defaultSettings = {
+  linearApiKey: "",
   lang: "pt-br",
   maxGroups: 3,
   maxTasksPerGroup: 5,
@@ -141,28 +96,19 @@ const isTaskSelected = (task) => {
 
 const idGenerator = new GenerateId();
 
-const handleDragAndDrop = (group, event) => {
-  const originalGroup = getGroupBy(group.id);
-  console.log(event);
-  if (event.added) {
-    event.added.element.order = event.added.newIndex;
-    originalGroup?.tasks.push(event.added.element);
-  } else if (event.removed) {
-    originalGroup?.tasks.splice(event.removed.oldIndex, 1);
-  } else if (event.moved) {
-    const originalTask = find(originalGroup?.tasks, [
-      "id",
-      event.moved.element.id,
-    ]);
-    originalTask.order = event.moved.newIndex;
-  }
-};
-
 const Linear = ref(new LinearPlugin());
-const Session = ref(new SessionPlugin());
+
+// const SessionIntegration = ref(new SessionPlugin());
 
 const pullTasks = (group) => {
-  Linear.pullTasks().then((tasks) => (group.tasks = group.tasks.concat(tasks)));
+  toggleGroup(group, true);
+  Linear.value.pullTasks(data.value.settings.linearApiKey).then((tasks) => {
+    const existingTaskIds = group.tasks.backlog.map((task) => task.id);
+    const tasksToAdd = tasks.filter(
+      (task) => !existingTaskIds.includes(task.id)
+    );
+    group.tasks.backlog = group.tasks.backlog.concat(tasksToAdd);
+  });
 };
 
 const loading = ref(true);
@@ -176,21 +122,6 @@ const hash = computed(() => window.location.hash);
 const currentUrl = ref("");
 
 const isDragging = ref(null);
-
-// const computedGroups = computed({
-//   get() {
-//     return data.value.groups.map((group) => {
-//       group.sortedTasks = partition(
-//         group.tasks,
-//         (task) => !(task.done || task.canceled)
-//       );
-//       return group;
-//     }
-//   },
-//   set() {
-
-//   }
-// });
 
 const tabs = [
   { id: "groups", name: "Group View", icon: SquaresPlusIcon },
@@ -224,6 +155,7 @@ const getNotesForObject = (objectType, object) => {
 
 const data = ref({
   history: [],
+  currentSession: null,
   pageTitle: "",
   lastCategory: "",
   sessions: [],
@@ -302,8 +234,6 @@ const current = ref({
 const isGroupHovered = (group) => {
   return data.value.hoveredGroup == group.id;
 };
-
-// Api key authentication
 
 const focusLastTask = (group, task) => {
   data.value.currentView = "groups";
@@ -442,8 +372,6 @@ const updateUrlWithState = () => {
 
   url.hash = compressedValue;
 
-  // console.log(url);
-
   window.history.pushState({}, "", url);
 };
 
@@ -459,8 +387,22 @@ window.addEventListener(
   false
 );
 
+const secondsLeftInSeconds = ref(0);
+
+class Session {
+  taskId?: string;
+  task?: Record<any, any>;
+  startedAt?: any;
+  constructor(task) {
+    this.taskId = task.id;
+    this.task = task;
+    this.startedAt = Date.now();
+  }
+}
+
 const start = (task) => {
   console.log(`Starting task "${task.title}"`);
+  data.value.currentSession = new Session(task);
   doAction("task.start", task, data.value.settings);
 };
 
@@ -468,8 +410,6 @@ const pickTask = (task) => {
   task.counter++;
 
   currentTask.value = task;
-
-  // data.value.history.push([groupIndex, taskIndex, task.title]);
 };
 
 const pickATask = () => {
@@ -499,15 +439,11 @@ const extractStateFromUrl = () => {
     return;
   }
 
-  // console.log(window.location.hash);
-
   currentUrl.value = window.location.toString();
 
   const state = JSON.parse(
     LZString.decompressFromEncodedURIComponent(window.location.hash.slice(1))
   );
-
-  // console.log(state);
 
   state.settings = defaultsDeep(state.settings, defaultSettings);
 
@@ -533,7 +469,6 @@ const completeTaskAndPickNext = () => {
 };
 
 const today = computed(() => {
-  // console.log(data.value.settings.lang);
   return capitalize(
     moment().locale(data.value.settings.lang).format("dddd, LL")
   );
@@ -576,32 +511,32 @@ const tagGroupAsCurrent = debounce((group) => {
   group.id = group.id?.length
     ? group.id
     : LZString.compressToEncodedURIComponent(group.name);
-  // console.log(group);
   data.value.hoveredGroup = group.id;
 }, 100);
 
 watch(() => data.value.groups, updateUrlWithState, { deep: true });
 
-// onUpdated(updateUrlWithState);
-
 onMounted(() => {
-  // console.log("Loaded");
-
   extractStateFromUrl();
+
+  setInterval(() => {
+    if (data.value.currentSession) {
+      const now = Date.now();
+      secondsLeftInSeconds.value = Math.floor(
+        (data.value.currentSession.startedAt +
+          data.value.settings.pomodoroLength * 60 * 1000 -
+          now) /
+          1000
+      );
+    }
+  }, 1000);
 
   data.value.groups.map((group) => {
     group.tasks.finished = [];
     group.tasks.backlog = group.tasks.backlog ?? [];
   });
 
-  // console.log(data.value.groups);
-
-  // console.log(computedGroups.value);
-
   if (selectedTask.value) {
-    // // getNotesForObject("task", selectedTask.value);
-    // currentTask.value =
-    //   data.value.groups[selectedTask.value[0]].tasks[selectedTask.value[1]];
   }
 
   nextTick(() => (loading.value = false));
@@ -1405,7 +1340,12 @@ const keymap = {
       :downloadOptions="{ name: 'vqr', extension: 'png' }"
     />
 
-    <ActiveTaskBar :task="currentTask" :fullScreen="false">
+    <ActiveTaskBar
+      :task="currentTask"
+      :elapsedTime="secondsLeftInSeconds"
+      :session="data.currentSession"
+      :fullScreen="false"
+    >
       <button
         v-if="currentTask"
         :disabled="

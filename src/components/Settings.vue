@@ -460,6 +460,45 @@ watchEffect(() => {
                                       </p>
                                     </div>
                                   </div>
+
+                                  <div class="mt-6 grid grid-cols-12 gap-6">
+                                    <div class="col-span-12">
+                                      <label
+                                        for="max-active-groups"
+                                        class="
+                                          block
+                                          text-sm
+                                          font-medium
+                                          text-gray-700
+                                        "
+                                        >Linear API</label
+                                      >
+                                      <input
+                                        type="text"
+                                        name="max-tasks-per-group"
+                                        id="max-tasks-per-group"
+                                        v-model="settings.linearApiKey"
+                                        class="
+                                          mt-1
+                                          block
+                                          w-full
+                                          rounded-md
+                                          border border-gray-300
+                                          py-2
+                                          px-3
+                                          shadow-sm
+                                          focus:border-sky-500
+                                          focus:outline-none
+                                          focus:ring-sky-500
+                                          sm:text-sm
+                                        "
+                                      />
+                                      <p class="mt-2 text-sm text-gray-500">
+                                        The length, in minutes, of a work
+                                        session.
+                                      </p>
+                                    </div>
+                                  </div>
                                 </div>
                                 <div
                                   class="py-6 px-4 sm:p-6 lg:pb-8"

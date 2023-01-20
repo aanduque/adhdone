@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { XMarkIcon, CheckCircleIcon } from "@heroicons/vue/24/outline";
+import moment from "moment";
+import momentDurationFormat from "moment-duration-format";
 
 defineProps<{
   task: any;
   fullScreen?: boolean;
+  session?: any;
+  elapsedTime?: any;
 }>();
+
+momentDurationFormat(moment);
+
+const formatDuration = (duration) => {
+  return moment.duration(duration, "seconds").format("h:mm:ss");
+};
 </script>
 
 <template>
@@ -79,18 +89,21 @@ defineProps<{
     <!-- End Content -->
     <!-- Activity Bar -->
     <div class="bg-indigo-600">
-      <div class="mx-auto py-3 px-3 sm:px-6 lg:px-4">
+      <div class="mx-auto p-3 sm:px-6 lg:px-4">
         <div class="flex flex-wrap items-center justify-between">
           <!-- Item -->
           <div class="flex w-0 flex-1 items-center" v-if="task">
-            <span class="rounded-lg bg-indigo-800 p-2 hidden md:flex">
+            <span class="hidden rounded-lg bg-indigo-800 p-2 md:flex">
               <CheckCircleIcon class="h-6 w-6 text-white" aria-hidden="true" />
+              <span class="ml-1 font-mono font-medium text-white">{{
+                formatDuration(elapsedTime)
+              }}</span>
             </span>
-            <p class="ml-3 text-white flex gap-2">
+            <p class="ml-3 flex gap-2 text-white">
               <span class="font-medium">{{ task.title }}</span>
               <span
                 v-if="task.description"
-                class="hidden md:inline text-indigo-200 w-56 truncate"
+                class="hidden w-56 truncate text-indigo-200 md:inline"
                 >{{ task.description }}</span
               >
             </p>
