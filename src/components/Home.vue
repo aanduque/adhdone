@@ -6,6 +6,7 @@ import download from "in-browser-download";
 import QRCodeVue3 from "qrcode-vue3";
 import LZString from "lz-string";
 import GenerateId from "generate-id";
+import { VueDraggableNext } from "vue-draggable-next";
 import {
   flatten,
   capitalize,
@@ -48,6 +49,8 @@ import {
   SquaresPlusIcon,
   CalendarIcon,
   BookOpenIcon,
+  ChevronUpDownIcon,
+  ArrowsPointingOutIcon,
 } from "@heroicons/vue/24/outline";
 import { PlusIcon as PlusIconMini } from "@heroicons/vue/20/solid";
 import { TrashIcon } from "@heroicons/vue/24/outline";
@@ -210,6 +213,7 @@ const data = ref({
   currentView: "groups",
   groups: [
     {
+      id: "group1",
       name: "",
       ignore: false,
       tasks: {
@@ -229,6 +233,7 @@ const data = ref({
       },
     },
     {
+      id: "group2",
       name: "",
       ignore: false,
       tasks: {
@@ -426,6 +431,7 @@ class Session {
 
 const endCurrentSession = () => {
   data.value.currentSession.endedAt = Date.now();
+  data.value.sessions = data.value.sessions ?? [];
   data.value.sessions.push(data.value.currentSession);
   data.value.currentSession = null;
 };
@@ -945,17 +951,7 @@ const keymap = {
       <div
         v-if="data.currentView === 'groups'"
         v-auto-animate
-        class="
-          divide-y divide-gray-200
-          relative
-          bg-no-repeat
-          rounded-lg
-          bg-gray-50
-          shadow
-          sm:grid
-          md:grid-cols-2
-          lg:grid-cols-3
-        "
+        class="relative bg-no-repeat rounded-lg bg-gray-50 shadow"
       >
         <div
           class="absolute inset-0 bg-no-repeat opacity-10"
@@ -963,29 +959,36 @@ const keymap = {
         >
           &nbsp;
         </div>
-        <div
-          v-for="(group, groupIndex) in data.groups"
-          @mouseover="() => tagGroupAsCurrent(group)"
-          :key="group.name"
-          :class="[
-            'border-r border-gray-200',
-            groupIndex === 0
-              ? 'rounded-tl-lg rounded-tr-lg sm:rounded-tr-none'
-              : '',
-            groupIndex === 1 ? 'md:rounded-tr-lg lg:rounded-tr-none' : '',
-            groupIndex === 2 ? 'lg:rounded-tr-lg' : '',
-            groupIndex === data.groups.length - 3 ? 'lg:rounded-bl-lg' : '',
-            groupIndex === data.groups.length - 2
-              ? 'md:rounded-bl-lg lg:rounded-bl-none'
-              : '',
-            groupIndex === data.groups.length - 1
-              ? 'rounded-bl-lg rounded-br-lg sm:rounded-bl-none'
-              : '',
-            'relative group p-8 flex flex-col',
-            group.ignore ? 'bg-gray-50 order-last' : 'bg-white',
-          ]"
+        <VueDraggableNext
+          v-model="data.groups"
+          ghost-class="group-ghost"
+          handle=".group-move-handle"
+          group="groups"
+          class="sm:grid divide-y divide-gray-200 md:grid-cols-2 lg:grid-cols-3"
         >
-          <!-- <div>
+          <div
+            v-for="(group, groupIndex) in data.groups"
+            @mouseover="() => tagGroupAsCurrent(group)"
+            :key="group.id"
+            :class="[
+              'border-r border-gray-200',
+              groupIndex === 0
+                ? 'rounded-tl-lg rounded-tr-lg sm:rounded-tr-none'
+                : '',
+              groupIndex === 1 ? 'md:rounded-tr-lg lg:rounded-tr-none' : '',
+              groupIndex === 2 ? 'lg:rounded-tr-lg' : '',
+              groupIndex === data.groups.length - 3 ? 'lg:rounded-bl-lg' : '',
+              groupIndex === data.groups.length - 2
+                ? 'md:rounded-bl-lg lg:rounded-bl-none'
+                : '',
+              groupIndex === data.groups.length - 1
+                ? 'rounded-bl-lg rounded-br-lg sm:rounded-bl-none'
+                : '',
+              'relative group p-8 flex flex-col',
+              group.ignore ? 'bg-gray-50 order-last' : 'bg-white',
+            ]"
+          >
+            <!-- <div>
             <span
               :class="[
                 group.iconBackground,
@@ -996,243 +999,260 @@ const keymap = {
               <component :is="group.icon" class="h-6 w-6" aria-hidden="true" />
             </span>
           </div> -->
-          <div class="mt-0">
-            <!-- <h3 class="text-lg font-medium">
+            <div class="mt-0">
+              <!-- <h3 class="text-lg font-medium">
               {{ group.name }}
             </h3> -->
-            <div class="flex items-center justify-between">
-              <input
-                class="
-                  -mt-2
-                  bg-transparent
-                  py-2
-                  text-lg
-                  font-medium
-                  text-gray-900
-                  focus:outline-none
-                "
-                v-model.lazy="group.name"
-                :id="`group-name-${group.id}`"
-                :placeholder="'Group ' + (groupIndex + 1)"
-              />
-              <div class="-mr-4 -mt-2 flex items-center">
-                <div v-if="isGroupHovered(group)" class="p-2">
-                  <CheckIcon class="h-5 w-5 text-indigo-700" />
-                </div>
-                <button
-                  @click.prevent="() => pullTasks(group)"
+              <div class="flex items-center justify-between">
+                <input
                   class="
-                    hidden
-                    items-center
-                    rounded-full
-                    group-hover:flex
+                    -mt-2
                     bg-transparent
-                    p-2
-                    text-gray-400
-                    hover:text-gray-600
-                    focus:outline-none focus:ring-2 focus:ring-indigo-500
+                    py-2
+                    text-lg
+                    font-medium
+                    text-gray-900
+                    focus:outline-none
                   "
-                >
-                  <ArrowPathIcon class="h-5 w-5" />
-                </button>
-                <Menu as="div" class="relative inline-block text-left">
-                  <div>
-                    <MenuButton
-                      class="
-                        hidden
-                        items-center
-                        rounded-full
-                        group-hover:flex
-                        bg-transparent
-                        p-2
-                        text-gray-400
-                        hover:text-gray-600
-                        focus:outline-none focus:ring-2 focus:ring-indigo-500
-                      "
-                    >
-                      <span class="sr-only">Open options</span>
-                      <Cog8ToothIcon class="h-5 w-5" aria-hidden="true" />
-                    </MenuButton>
+                  v-model.lazy="group.name"
+                  :id="`group-name-${group.id}`"
+                  :placeholder="'Group ' + (groupIndex + 1)"
+                />
+                <div class="-mr-4 -mt-2 flex items-center">
+                  <div v-if="isGroupHovered(group)" class="p-2">
+                    <CheckIcon class="h-5 w-5 text-indigo-700" />
                   </div>
-
-                  <transition
-                    enter-active-class="transition ease-out duration-100"
-                    enter-from-class="transform opacity-0 scale-95"
-                    enter-to-class="transform opacity-100 scale-100"
-                    leave-active-class="transition ease-in duration-75"
-                    leave-from-class="transform opacity-100 scale-100"
-                    leave-to-class="transform opacity-0 scale-95"
+                  <button
+                    @click.prevent="() => pullTasks(group)"
+                    class="
+                      hidden
+                      items-center
+                      rounded-full
+                      group-hover:flex
+                      bg-transparent
+                      p-2
+                      text-gray-400
+                      hover:text-gray-600
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500
+                    "
                   >
-                    <MenuItems
-                      class="
-                        absolute
-                        right-0
-                        z-10
-                        mt-2
-                        w-72
-                        origin-top-right
-                        rounded-md
-                        bg-white
-                        shadow-lg
-                        ring-1 ring-black ring-opacity-5
-                        divide-y divide-gray-100
-                        focus:outline-none
-                      "
+                    <ArrowPathIcon class="h-5 w-5" />
+                  </button>
+                  <button
+                    @click.prevent="() => {}"
+                    class="
+                      group-move-handle
+                      hidden
+                      items-center
+                      rounded-full
+                      group-hover:flex
+                      bg-transparent
+                      p-2
+                      text-gray-400
+                      hover:text-gray-600
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500
+                    "
+                  >
+                    <ArrowsPointingOutIcon class="h-5 w-5" />
+                  </button>
+                  <Menu as="div" class="relative inline-block text-left">
+                    <div>
+                      <MenuButton
+                        class="
+                          hidden
+                          items-center
+                          rounded-full
+                          group-hover:flex
+                          bg-transparent
+                          p-2
+                          text-gray-400
+                          hover:text-gray-600
+                          focus:outline-none focus:ring-2 focus:ring-indigo-500
+                        "
+                      >
+                        <span class="sr-only">Open options</span>
+                        <Cog8ToothIcon class="h-5 w-5" aria-hidden="true" />
+                      </MenuButton>
+                    </div>
+
+                    <transition
+                      enter-active-class="transition ease-out duration-100"
+                      enter-from-class="transform opacity-0 scale-95"
+                      enter-to-class="transform opacity-100 scale-100"
+                      leave-active-class="transition ease-in duration-75"
+                      leave-from-class="transform opacity-100 scale-100"
+                      leave-to-class="transform opacity-0 scale-95"
                     >
-                      <div class="py-1">
-                        <MenuItem v-slot="{ active }">
-                          <a
-                            href="#"
-                            :class="[
-                              active
-                                ? 'bg-gray-100 text-gray-900'
-                                : 'text-gray-700',
-                              'flex justify-between px-4 py-2 text-sm',
-                            ]"
-                          >
-                            <SwitchGroup
-                              as="div"
-                              class="flex items-center justify-between"
+                      <MenuItems
+                        class="
+                          absolute
+                          right-0
+                          z-10
+                          mt-2
+                          w-72
+                          origin-top-right
+                          rounded-md
+                          bg-white
+                          shadow-lg
+                          ring-1 ring-black ring-opacity-5
+                          divide-y divide-gray-100
+                          focus:outline-none
+                        "
+                      >
+                        <div class="py-1">
+                          <MenuItem v-slot="{ active }">
+                            <a
+                              href="#"
+                              :class="[
+                                active
+                                  ? 'bg-gray-100 text-gray-900'
+                                  : 'text-gray-700',
+                                'flex justify-between px-4 py-2 text-sm',
+                              ]"
                             >
-                              <span class="flex flex-grow flex-col">
-                                <SwitchLabel
-                                  as="span"
-                                  class="text-sm font-medium text-gray-900"
-                                  passive
-                                  >Ignore group</SwitchLabel
-                                >
-                                <SwitchDescription
-                                  as="span"
-                                  class="text-sm text-gray-500"
-                                  >Prevent tasks from this group from being
-                                  picked.</SwitchDescription
-                                >
-                              </span>
-                              <Switch
-                                v-model="group.ignore"
-                                :class="[
-                                  group.ignore
-                                    ? 'bg-indigo-600'
-                                    : 'bg-gray-200',
-                                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
-                                ]"
+                              <SwitchGroup
+                                as="div"
+                                class="flex items-center justify-between"
                               >
-                                <span
-                                  aria-hidden="true"
+                                <span class="flex flex-grow flex-col">
+                                  <SwitchLabel
+                                    as="span"
+                                    class="text-sm font-medium text-gray-900"
+                                    passive
+                                    >Ignore group</SwitchLabel
+                                  >
+                                  <SwitchDescription
+                                    as="span"
+                                    class="text-sm text-gray-500"
+                                    >Prevent tasks from this group from being
+                                    picked.</SwitchDescription
+                                  >
+                                </span>
+                                <Switch
+                                  v-model="group.ignore"
                                   :class="[
                                     group.ignore
-                                      ? 'translate-x-5'
-                                      : 'translate-x-0',
-                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                      ? 'bg-indigo-600'
+                                      : 'bg-gray-200',
+                                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
                                   ]"
-                                />
-                              </Switch>
-                            </SwitchGroup>
-                          </a>
-                        </MenuItem>
-                      </div>
-                      <div class="py-1">
-                        <MenuItem v-slot="{ active }">
-                          <a
-                            @click.prevent="() => deleteGroup(group)"
-                            href="#"
-                            :class="[
-                              active
-                                ? 'bg-gray-100 text-gray-900'
-                                : 'text-gray-700',
-                              'group flex items-center px-4 py-2 text-sm',
-                            ]"
-                          >
-                            <TrashIcon
-                              class="
-                                mr-3
-                                h-5
-                                w-5
-                                text-gray-400
-                                group-hover:text-gray-500
-                              "
-                              aria-hidden="true"
-                            />
-                            Delete
-                          </a>
-                        </MenuItem>
-                      </div>
-                    </MenuItems>
-                  </transition>
-                </Menu>
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    :class="[
+                                      group.ignore
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0',
+                                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                    ]"
+                                  />
+                                </Switch>
+                              </SwitchGroup>
+                            </a>
+                          </MenuItem>
+                        </div>
+                        <div class="py-1">
+                          <MenuItem v-slot="{ active }">
+                            <a
+                              @click.prevent="() => deleteGroup(group)"
+                              href="#"
+                              :class="[
+                                active
+                                  ? 'bg-gray-100 text-gray-900'
+                                  : 'text-gray-700',
+                                'group flex items-center px-4 py-2 text-sm',
+                              ]"
+                            >
+                              <TrashIcon
+                                class="
+                                  mr-3
+                                  h-5
+                                  w-5
+                                  text-gray-400
+                                  group-hover:text-gray-500
+                                "
+                                aria-hidden="true"
+                              />
+                              Delete
+                            </a>
+                          </MenuItem>
+                        </div>
+                      </MenuItems>
+                    </transition>
+                  </Menu>
+                </div>
               </div>
-            </div>
-            <p
-              class="mt-1 text-sm text-gray-500 focus:outline-none word-wrap"
-              @input="
-                (e) => {
-                  group.description = e.target.innerText;
-                }
-              "
-              contenteditable="true"
-              placeholder="teste"
-            >
-              {{ group.description ?? "No description" }}
-            </p>
-          </div>
-
-          <div class="mt-6 mb-4" v-auto-animate>
-            <div
-              class="relative z-10 -mr-8 ml-[-28px] mb-[-11px]"
-              v-if="isGroupOpened(group)"
-            >
-              <div
-                class="absolute inset-0 flex items-center"
-                aria-hidden="true"
+              <p
+                class="mt-1 text-sm text-gray-500 focus:outline-none word-wrap"
+                @input="
+                  (e) => {
+                    group.description = e.target.innerText;
+                  }
+                "
+                contenteditable="true"
+                placeholder="teste"
               >
-                <div class="w-full border-t border-gray-200" />
-              </div>
-              <div class="relative flex justify-center items-center">
-                <span
-                  :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
-                  class="
-                    px-2
-                    py-0.5
-                    text-xs text-gray-400
-                    border border-gray-200
-                    rounded-full
-                  "
-                  >Active</span
-                >
-              </div>
+                {{ group.description ?? "No description" }}
+              </p>
             </div>
-            <!-- Open Tasks -->
-            <TaskList
-              v-model="group.tasks.active"
-              :display-empty-block="true"
-              :group="group"
-              :active-task="selectedTask"
-              :selected-tasks="selectedTasks"
-              :categories="data.categories"
-              :max-tasks="data.settings.maxTasksPerGroup"
-              :class="['-mx-8', group.ignore ? 'bg-gray-50' : 'bg-white']"
-              :item-classes="group.ignore ? 'bg-gray-50' : 'bg-white'"
-              scope="tasks"
-              :picked-task="currentTask"
-              @task:mouseover="
-                (task, group) =>
-                  (data.hoveredTask = { groupId: group.id, taskId: task.id })
-              "
-              @task:delete="(task, group) => deleteTask(group, task)"
-              @task:create="
-                (group, position) => {
-                  addTask(group, position);
-                }
-              "
-              @list:overflow="
-                (tasks) => {
-                  group.tasks.backlog = group.tasks.backlog ?? [];
-                  group.tasks.backlog.unshift(...tasks);
-                }
-              "
-            />
-            <!-- End Open Tasks -->
-            <!-- 
+
+            <div class="mt-6 mb-4" v-auto-animate>
+              <div
+                class="relative z-10 -mr-8 ml-[-28px] mb-[-11px]"
+                v-if="isGroupOpened(group)"
+              >
+                <div
+                  class="absolute inset-0 flex items-center"
+                  aria-hidden="true"
+                >
+                  <div class="w-full border-t border-gray-200" />
+                </div>
+                <div class="relative flex justify-center items-center">
+                  <span
+                    :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
+                    class="
+                      px-2
+                      py-0.5
+                      text-xs text-gray-400
+                      border border-gray-200
+                      rounded-full
+                    "
+                    >Active</span
+                  >
+                </div>
+              </div>
+              <!-- Open Tasks -->
+              <TaskList
+                v-model="group.tasks.active"
+                :display-empty-block="true"
+                :group="group"
+                :active-task="selectedTask"
+                :selected-tasks="selectedTasks"
+                :categories="data.categories"
+                :max-tasks="data.settings.maxTasksPerGroup"
+                :class="['-mx-8', group.ignore ? 'bg-gray-50' : 'bg-white']"
+                :item-classes="group.ignore ? 'bg-gray-50' : 'bg-white'"
+                scope="tasks"
+                :picked-task="currentTask"
+                @task:mouseover="
+                  (task, group) =>
+                    (data.hoveredTask = { groupId: group.id, taskId: task.id })
+                "
+                @task:delete="(task, group) => deleteTask(group, task)"
+                @task:create="
+                  (group, position) => {
+                    addTask(group, position);
+                  }
+                "
+                @list:overflow="
+                  (tasks) => {
+                    group.tasks.backlog = group.tasks.backlog ?? [];
+                    group.tasks.backlog.unshift(...tasks);
+                  }
+                "
+              />
+              <!-- End Open Tasks -->
+              <!-- 
             <div
               v-if="isGroupOpened(group)"
               class="-mx-8 border-l-4 border-l-gray-800"
@@ -1240,126 +1260,129 @@ const keymap = {
               <div class="border-t border-gray-200"></div>
             </div> -->
 
-            <div
-              class="relative z-10 -mr-8 ml-[-28px] my-[-11px]"
-              v-if="isGroupOpened(group)"
-            >
               <div
-                class="absolute inset-0 flex items-center"
-                aria-hidden="true"
+                class="relative z-10 -mr-8 ml-[-28px] my-[-11px]"
+                v-if="isGroupOpened(group)"
               >
-                <div class="w-full border-t border-gray-200" />
-              </div>
-              <div class="relative flex justify-center items-center">
-                <span
-                  :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
-                  class="
-                    px-2
-                    py-0.5
-                    text-xs text-gray-400
-                    border border-gray-200
-                    rounded-full
-                  "
-                  >Backlog</span
+                <div
+                  class="absolute inset-0 flex items-center"
+                  aria-hidden="true"
                 >
+                  <div class="w-full border-t border-gray-200" />
+                </div>
+                <div class="relative flex justify-center items-center">
+                  <span
+                    :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
+                    class="
+                      px-2
+                      py-0.5
+                      text-xs text-gray-400
+                      border border-gray-200
+                      rounded-full
+                    "
+                    >Backlog</span
+                  >
+                </div>
               </div>
-            </div>
 
-            <!-- Backlog Tasks -->
-            <TaskList
-              v-if="isGroupOpened(group)"
-              v-model="group.tasks.backlog"
-              :group="group"
-              :selected-tasks="selectedTasks"
-              :categories="data.categories"
-              class="-mx-8"
-              :class="[group.ignore ? 'bg-white' : 'bg-gray-50']"
-              :item-classes="group.ignore ? 'bg-white' : 'bg-gray-50'"
-              :picked-task="currentTask"
-              scope="tasks"
-              @task:mouseover="
-                (task, group) =>
-                  (data.hoveredTask = { groupId: group.id, taskId: task.id })
-              "
-              @task:delete="(task, group) => deleteTask(group, task)"
-              @task:create="
-                (group, position) => {
-                  addTask(group, position);
-                }
-              "
-            />
-            <!-- End Backlog Tasks -->
-            <div
-              v-if="isGroupOpened(group)"
-              class="-mx-8 border-l-4 border-l-gray-300"
-            >
-              <div class="border-t border-gray-200"></div>
-            </div>
-          </div>
-
-          <div
-            class="
-              align-self
-              mt-auto
-              -mb-4
-              -mr-5
-              -ml-3
-              flex
-              items-center
-              justify-between
-            "
-          >
-            <div v-if="group.tasks?.backlog?.length" class="">
-              <a
-                href="#"
-                class="text-xs text-gray-400 flex justify-items-center"
-                @click.prevent="
-                  () => {
-                    toggleGroup(group);
+              <!-- Backlog Tasks -->
+              <TaskList
+                v-if="isGroupOpened(group)"
+                v-model="group.tasks.backlog"
+                :group="group"
+                :selected-tasks="selectedTasks"
+                :categories="data.categories"
+                class="-mx-8"
+                :class="[group.ignore ? 'bg-white' : 'bg-gray-50']"
+                :item-classes="group.ignore ? 'bg-white' : 'bg-gray-50'"
+                :picked-task="currentTask"
+                scope="tasks"
+                @task:mouseover="
+                  (task, group) =>
+                    (data.hoveredTask = { groupId: group.id, taskId: task.id })
+                "
+                @task:delete="(task, group) => deleteTask(group, task)"
+                @task:create="
+                  (group, position) => {
+                    addTask(group, position);
                   }
                 "
+              />
+              <!-- End Backlog Tasks -->
+              <div
+                v-if="isGroupOpened(group)"
+                class="-mx-8 border-l-4 border-l-gray-300"
               >
-                <component
-                  :is="
-                    isGroupOpened(group)
-                      ? ArrowUpCircleIcon
-                      : ArrowDownCircleIcon
-                  "
-                  class="h-4 w-4 mr-1"
-                  aria-hidden="true"
-                />
-                <span
-                  v-text="isGroupOpened(group) ? 'Hide backlog' : 'See backlog'"
-                ></span>
-              </a>
+                <div class="border-t border-gray-200"></div>
+              </div>
             </div>
-            <div v-else>&nbsp;</div>
 
-            <div class="flex justify-end">
-              <button
-                type="button"
-                class="
-                  inline-flex
-                  items-center
-                  rounded-full
-                  border border-transparent
-                  bg-indigo-600
-                  p-1
-                  text-white
-                  shadow-sm
-                  hover:bg-indigo-700
-                  focus:outline-none
-                  focus:ring-2
-                  focus:ring-indigo-500
-                  focus:ring-offset-2
-                "
-                @click.prevent="() => addTask(group)"
-              >
-                <PlusIconMini class="h-5 w-5" aria-hidden="true" />
-              </button>
+            <div
+              class="
+                align-self
+                mt-auto
+                -mb-4
+                -mr-5
+                -ml-3
+                flex
+                items-center
+                justify-between
+              "
+            >
+              <div v-if="group.tasks?.backlog?.length" class="">
+                <a
+                  href="#"
+                  class="text-xs text-gray-400 flex justify-items-center"
+                  @click.prevent="
+                    () => {
+                      toggleGroup(group);
+                    }
+                  "
+                >
+                  <component
+                    :is="
+                      isGroupOpened(group)
+                        ? ArrowUpCircleIcon
+                        : ArrowDownCircleIcon
+                    "
+                    class="h-4 w-4 mr-1"
+                    aria-hidden="true"
+                  />
+                  <span
+                    v-text="
+                      isGroupOpened(group) ? 'Hide backlog' : 'See backlog'
+                    "
+                  ></span>
+                </a>
+              </div>
+              <div v-else>&nbsp;</div>
+
+              <div class="flex justify-end">
+                <button
+                  type="button"
+                  class="
+                    inline-flex
+                    items-center
+                    rounded-full
+                    border border-transparent
+                    bg-indigo-600
+                    p-1
+                    text-white
+                    shadow-sm
+                    hover:bg-indigo-700
+                    focus:outline-none
+                    focus:ring-2
+                    focus:ring-indigo-500
+                    focus:ring-offset-2
+                  "
+                  @click.prevent="() => addTask(group)"
+                >
+                  <PlusIconMini class="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </VueDraggableNext>
       </div>
     </div>
 
@@ -1554,12 +1577,22 @@ const keymap = {
 .pretty.p-icon .state .icon {
   border-width: 2px !important;
 }
-.ghost {
-  @apply relative bg-gray-50 transition-all;
+.ghost,
+.group-ghost {
+  @apply relative bg-gray-50 transition-all overflow-hidden;
 }
 
 .ghost::after {
   @apply absolute bg-gray-50 inset-y-2 inset-x-4 flex items-center justify-center border-2 border-gray-200 border-dashed;
+  content: " ";
+}
+
+.group-ghost::before {
+  @apply absolute bg-gray-50 inset-0 flex items-center justify-center z-10;
+  content: " ";
+}
+.group-ghost::after {
+  @apply absolute bg-gray-50 inset-4 flex items-center justify-center border-2 rounded-md border-gray-200 border-dashed z-10;
   content: " ";
 }
 
