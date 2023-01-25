@@ -25,6 +25,7 @@
     "@wordpress/hooks": "^3.24.0",
     "crypto-js": "^4.1.1",
     "dotenv": "^16.0.3",
+    "floating-vue": "^2.0.0-beta.20",
     "generate-id": "^2.0.1",
     "gravatar": "^1.8.2",
     "in-browser-download": "^2.0.0",
