@@ -5,7 +5,6 @@ import {
   toRefs,
   watchEffect,
   defineEmits,
-  defineProps,
   nextTick,
 } from "vue";
 import { markdown } from "markdown";

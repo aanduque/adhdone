@@ -8,45 +8,52 @@ import { nextTick, ref, toRefs, onMounted, computed } from "vue";
 import VueCal from "vue-cal";
 import "vue-cal/dist/vuecal.css";
 import moment from "moment";
+import { isArray } from "lodash";
 
 const c = console;
 
 const vuecal = ref(null);
 
+const currentBlock = ref(null);
+
 const props = defineProps<{
   sessions: any;
+  groups: any;
 }>();
 
 const { sessions } = toRefs(props);
 
 const events = computed(() =>
-  sessions.value.map((session) => {
-    return {
-      start: moment(session.startedAt).format("YYYY-MM-DD HH:mm"),
-      end: moment(session.endedAt).format("YYYY-MM-DD HH:mm"),
-      // You can also define event dates with Javascript Date objects:
-      // start: new Date(2018, 11 - 1, 16, 10, 30),
-      // end: new Date(2018, 11 - 1, 16, 11, 30),
-      title: "Doctor appointment",
-      content: '<i class="icon material-icons">local_hospital</i>',
-      class: "health",
-      split: "sessions",
-    };
-  })
+  isArray(sessions.value)
+    ? sessions.value.map((session) => {
+        console.log(session);
+        return {
+          start: moment(session.startedAt).format("YYYY-MM-DD HH:mm"),
+          end: moment(session.endedAt).format("YYYY-MM-DD HH:mm"),
+          // You can also define event dates with Javascript Date objects:
+          // start: new Date(2018, 11 - 1, 16, 10, 30),
+          // end: new Date(2018, 11 - 1, 16, 11, 30),
+          title: "Doctor appointment",
+          content: '<i class="icon material-icons">local_hospital</i>',
+          class: "health",
+          split: "sessions",
+        };
+      })
+    : []
 );
 
 // `timeCellHeight` is set to 26 in the component data.
-const scrollToCurrentTime = (calRef) => {
+const scrollToCurrentTime = () => {
   const hours =
     vuecal.value.now.getHours() + vuecal.value.now.getMinutes() / 60;
-  // nextTick(() => {
-  const calel = document.querySelector(".vuecal__bg");
-  // console.log(calel);
-  calel.scrollTo({
-    top: hours * vuecal.value.timeCellHeight,
-    behavior: "smooth",
+  nextTick(() => {
+    const calel = document.querySelector(".vuecal__bg");
+    // console.log(calel);
+    calel.scrollTo({
+      top: hours * vuecal.value.timeCellHeight,
+      behavior: "smooth",
+    });
   });
-  // });
 };
 
 const scrollToTop = () => {
@@ -55,7 +62,7 @@ const scrollToTop = () => {
 };
 
 onMounted(() => {
-  console.log(events.value);
+  // console.log("sasa", sessions.value);
 });
 
 // const events = ref([
@@ -95,6 +102,16 @@ const splits = [
     icon: BookOpenIcon,
   },
 ];
+
+const onEventCreate = (event, deleteEventFunction) => {
+  event.allowedGroups = event.allowedGroups ?? [];
+  if (event.split === "blocks") {
+    event.title = "New Block";
+    event.content = "";
+    currentBlock.value = event;
+  }
+  return event;
+};
 </script>
 
 <template>
@@ -103,7 +120,7 @@ const splits = [
       <VueCal
         class="max-h-[80vh]"
         locale="en"
-        @ready="() => scrollToCurrentTime(this)"
+        @ready="() => scrollToCurrentTime()"
         :time-cell-height="40"
         ref="vuecal"
         :hide-view-selector="true"
@@ -111,8 +128,8 @@ const splits = [
         :hide-title-bar="true"
         :time-from="1 * 60"
         height="600"
-        :time-step="15"
-        :time-to="23 * 60"
+        :time-step="10"
+        :time-to="24 * 60"
         :disable-views="['years', 'year', 'week', 'month']"
         active-view="day"
         :cell-click-hold="false"
@@ -124,6 +141,7 @@ const splits = [
         editable-events
         sticky-split-labels
         @cell-dblclick="(...args) => c.log(args)"
+        :on-event-create="onEventCreate"
       >
         <!-- <template #title="args">{{ JSON.stringify(args) }}</template> -->
         <template #split-label="{ split, view }">
@@ -142,31 +160,61 @@ const splits = [
           </div>
         </template>
         <template #no-event>&nbsp;</template>
+        <template #event="{ event, view }">
+          <!-- <v-icon>{{ event.icon }}</v-icon> -->
+
+          <div class="vuecal__event-title" v-html="event.title" />
+          <!-- Or if your events are editable: -->
+          <div
+            class="vuecal__event-title vuecal__event-title--edit"
+            contenteditable
+            @blur="event.title = $event.target.innerHTML"
+            v-html="event.title"
+          />
+
+          <div>{{ event.content }}</div>
+          <div>
+            {{
+              event.allowedGroups.length === 0
+                ? "No groups allowed"
+                : `${event.allowedGroups.length} group(s) allowed.`
+            }}
+          </div>
+
+          <small class="vuecal__event-time">
+            <!-- Using Vue Cal Date prototypes (activated by default) -->
+            <strong>Event start:</strong>
+            <span>{{ event.start.formatTime("h O'clock") }}</span
+            ><br />
+            <strong>Event end:</strong>
+            <span>{{ event.end.formatTime("h O'clock") }}</span>
+          </small>
+        </template>
       </VueCal>
     </div>
     <div class="col-span-4 bg-gray-50 p-8">
-      <div class="space-y-6">
+      <div class="space-y-6" v-if="currentBlock">
         <div>
           <h1 class="text-lg font-medium leading-6 text-gray-900">
-            Project Settings
+            Block Settings
           </h1>
           <p class="mt-1 text-sm text-gray-500">
-            Let’s get started by filling in the information below to create your
-            new project.
+            Blocks are a useful way to limit what kind of tasks you can do in
+            each part of the day.
           </p>
         </div>
 
         <div>
           <label
-            for="project-name"
+            for="block-name"
             class="block text-sm font-medium text-gray-700"
-            >Project Name</label
+            >Block Name</label
           >
           <div class="mt-1">
             <input
               type="text"
-              name="project-name"
-              id="project-name"
+              name="block-name"
+              id="block-name"
               class="
                 block
                 w-full
@@ -176,7 +224,7 @@ const splits = [
                 focus:border-sky-500 focus:ring-sky-500
                 sm:text-sm
               "
-              value="Project Nero"
+              v-model="currentBlock.title"
             />
           </div>
         </div>
@@ -191,6 +239,7 @@ const splits = [
             <textarea
               id="description"
               name="description"
+              v-model="currentBlock.content"
               rows="3"
               class="
                 block
@@ -203,6 +252,44 @@ const splits = [
               "
             />
           </div>
+        </div>
+
+        <div>
+          <label for="groups" class="block text-sm font-medium text-gray-700"
+            >Groups</label
+          >
+          <fieldset class="mt-4">
+            <legend class="sr-only">Allowed Groups</legend>
+            <div class="sm:grid grid-cols-2 sm:items-center gap-4">
+              <div
+                v-for="(group, groupIndex) in groups"
+                :key="group.id"
+                class="flex items-center"
+              >
+                <input
+                  :id="group.id"
+                  name="allowed-groups"
+                  type="checkbox"
+                  :key="group.id"
+                  :checked="currentBlock.allowedGroups.includes(group.id)"
+                  v-model="currentBlock.allowedGroups"
+                  :value="group.id"
+                  class="
+                    h-4
+                    w-4
+                    border-gray-300
+                    text-indigo-600
+                    focus:ring-indigo-500
+                  "
+                />
+                <label
+                  :for="group.id"
+                  class="ml-3 block text-sm font-medium text-gray-700"
+                  >{{ group.name }}</label
+                >
+              </div>
+            </div>
+          </fieldset>
         </div>
       </div>
     </div>

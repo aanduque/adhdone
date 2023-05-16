@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, nextTick, watch } from "vue";
+import { onMounted, onUpdated, ref, computed, nextTick, watch } from "vue";
 import { applyFilters, doAction } from "@wordpress/hooks";
 import imgBgUrl from "@/assets/groups-bg.png";
 import download from "in-browser-download";
@@ -7,6 +7,7 @@ import QRCodeVue3 from "qrcode-vue3";
 import LZString from "lz-string";
 import GenerateId from "generate-id";
 import { VueDraggableNext } from "vue-draggable-next";
+import { markdown } from "markdown";
 import {
   flatten,
   capitalize,
@@ -19,6 +20,7 @@ import {
   uniq,
   filter,
   values,
+clone,
 } from "lodash";
 import moment from "moment/min/moment-with-locales";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
@@ -29,16 +31,21 @@ import {
   SwitchLabel,
 } from "@headlessui/vue";
 import ActiveTaskBar from "./ActiveTaskBar.vue";
-import Panel from "./Panel.vue";
 import ProgressBar from "./ProgressBar.vue";
 import Settings from "./Settings.vue";
 import Calendar from "./Calendar.vue";
 import TaskDetails from "./TaskDetails.vue";
 import TaskList from "./TaskList.vue";
+import EditTask from "./settings/EditTask.vue";
+import Task from "../models/Task";
+import Group, {groupAsTask} from "../models/Group";
+import Session from "../models/Session";
 import {
   PlusCircleIcon,
   PlayIcon,
   ForwardIcon,
+  DocumentDuplicateIcon,
+  UserPlusIcon,
   BoltIcon,
   CheckCircleIcon,
   CheckIcon,
@@ -48,14 +55,25 @@ import {
   ArrowPathIcon,
   SquaresPlusIcon,
   CalendarIcon,
+  EllipsisVerticalIcon,
   BookOpenIcon,
   ChevronUpDownIcon,
+  PlayCircleIcon,
   ArrowsPointingOutIcon,
+  TagIcon,
+  LinkIcon,
+  GlobeAltIcon,
 } from "@heroicons/vue/24/outline";
 import { PlusIcon as PlusIconMini } from "@heroicons/vue/20/solid";
 import { TrashIcon } from "@heroicons/vue/24/outline";
 import { LinearPlugin } from "@/integrations/Linear";
 import { SessionPlugin } from "@/integrations/Session";
+import initHooks from "../defaultHooks";
+import { read, write } from "../helpers/LocalStorage";
+
+// shortcuts://run-shortcut?name=[name]&input=[input]
+
+const md = (content) => markdown.toHTML(content);
 
 const defaultSettings = {
   linearApiKey: "",
@@ -73,24 +91,49 @@ const defaultSettings = {
 
 const openedGroups = ref({});
 
+const focusMode = ref(true);
+
+const sidePanel = ref("");
+
 const sessionEndNotificationCounter = ref(0);
 
 function updateTabTitle(number) {
-  var originalTitle = document.title;
+  // var originalTitle = document.title;
   // document.title = "(" + number + ") " + originalTitle;
-  // document.getElementsByTagName("title")[0].innerHTML = "(" + number + ") " + originalTitle;
+  // document.getElementsByTagName("title")[0].innerHTML =
+  //   "(" + number + ") " + originalTitle;
+
   document.getElementById("favicon")?.remove();
   document.getElementById("number-favicon")?.remove();
+  document.getElementById("badge-favicon")?.remove();
   var link = document.createElement("link");
   link.type = "image/x-icon";
   link.rel = "shortcut icon";
+  link.href = "favicon.ico";
   link.id = "number-favicon";
-  link.href =
-    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='rgb(0, 128, 0)'/><text x='50%' y='50%' text-anchor='middle' fill='white' font-size='14' font-family='Arial' dy='.3em'>%n</text></svg>".replace(
-      "%n",
-      number
-    );
   document.getElementsByTagName("head")[0].appendChild(link);
+
+  var canvas = document.createElement("canvas");
+  var img = document.createElement("img");
+  img.onload = function () {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    var ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    ctx.fillStyle = "rgb(0, 128, 0)";
+    ctx.fillRect(0, 0, 20, 20);
+    ctx.fillStyle = "white";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(number, 10, 15);
+    var link = document.createElement("link");
+    link.type = "image/x-icon";
+    link.rel = "shortcut icon";
+    link.id = "badge-favicon";
+    link.href = canvas.toDataURL();
+    document.getElementsByTagName("head")[0].appendChild(link);
+  };
+  img.src = "favicon.ico";
 }
 
 const settingsOpened = ref(false);
@@ -118,11 +161,11 @@ const isTaskSelected = (task) => {
   return selectedTasks.value.includes(task.id);
 };
 
-const idGenerator = new GenerateId();
-
 const Linear = ref(new LinearPlugin());
 
-// const SessionIntegration = ref(new SessionPlugin());
+const SessionIntegration = ref(new SessionPlugin());
+
+initHooks();
 
 const pullTasks = (group) => {
   toggleGroup(group, true);
@@ -149,8 +192,8 @@ const isDragging = ref(null);
 
 const tabs = [
   { id: "groups", name: "Group View", icon: SquaresPlusIcon },
-  { id: "calendar", name: "Calendar View", icon: CalendarIcon },
-  { id: "notes", name: "Notes View", icon: BookOpenIcon },
+  // { id: "calendar", name: "Calendar View", icon: CalendarIcon },
+  // { id: "notes", name: "Notes View", icon: BookOpenIcon },
 ];
 
 const colors = [
@@ -179,6 +222,7 @@ const getNotesForObject = (objectType, object) => {
 
 const data = ref({
   history: [],
+  lastSync: 0,
   currentSession: null,
   pageTitle: "",
   lastCategory: "",
@@ -289,29 +333,6 @@ const focusGroup = () => {
 
 const currentTask = ref(null);
 
-class Task {
-  id = null;
-
-  done = false;
-
-  category = "";
-
-  jumped = false;
-
-  counter = 0;
-
-  title = "My Task";
-
-  description = "";
-
-  constructor(task = "My Task", description = "", category = "") {
-    this.title = task;
-    this.description = description;
-    this.category = category;
-    this.id = idGenerator.generate(20);
-  }
-}
-
 const totalTasks = computed(() => {
   return flatten(
     data.value.groups
@@ -350,20 +371,27 @@ const remainingSkips = computed(() => {
 const clearState = () => {
   const state = Object.assign({}, data.value, {
     history: [],
+    pageTitle: today.value,
   });
 
   state.groups = state.groups.map((group) => {
     group.tasks.active = group.tasks.active
-      .filter((task) => !(task.done || task.canceled))
+      .filter((task) => !((task.done || task.canceled) && !task.recurring))
       .map((task) => {
         task.jumped = false;
+        if (task?.recurring) {
+          task.done = false;
+        }
 
         return task;
       });
     group.tasks.backlog = group.tasks.backlog
-      .filter((task) => !(task.done || task.canceled))
+      .filter((task) => !((task.done || task.canceled) && !task.recurring))
       .map((task) => {
         task.jumped = false;
+        if (task?.recurring) {
+          task.done = false;
+        }
 
         return task;
       });
@@ -373,25 +401,10 @@ const clearState = () => {
   return state;
 };
 
-class Group {
-  id: string | null = null;
-
-  name = null;
-
-  ignore = false;
-
-  tasks: Record<string, any>;
-
-  constructor() {
-    this.id = idGenerator.generate(20);
-    this.tasks = {
-      active: [],
-      backlog: [],
-    };
-  }
-}
-
 const updateUrlWithState = () => {
+
+  return;
+
   const compressedValue = LZString.compressToEncodedURIComponent(
     JSON.stringify(data.value)
   );
@@ -416,18 +429,6 @@ window.addEventListener(
 );
 
 const secondsLeftInSeconds = ref(0);
-
-class Session {
-  taskId?: string;
-  task?: Record<any, any>;
-  startedAt?: any;
-  endedAt?: any;
-  constructor(task) {
-    this.taskId = task.id;
-    this.task = task;
-    this.startedAt = Date.now();
-  }
-}
 
 const endCurrentSession = () => {
   data.value.currentSession.endedAt = Date.now();
@@ -470,10 +471,34 @@ const pickATask = () => {
   pickTask(pickedTask, randomTaskIndex, randomGroupIndex);
 };
 
+const pickTaskInGroup = (group) => {
+  const randomTaskIndex = Math.floor(Math.random() * group.tasks.active.length);
+
+  const pickedTask = group.tasks.active[randomTaskIndex];
+
+  if (pickedTask.done || pickedTask.canceled) {
+    return pickATask();
+  }
+
+  pickTask(pickedTask, randomTaskIndex, 0);
+};
+
+const initializeState = () => {
+
+  const state = read('state', extractStateFromUrl)
+
+  state.settings = defaultsDeep(state.settings, defaultSettings);
+
+  data.value = state;
+
+}
+
 const extractStateFromUrl = () => {
   if (window.location.hash.length <= 1) {
     return;
   }
+
+  console.log('Fetching from the URL...')
 
   currentUrl.value = window.location.toString();
 
@@ -483,7 +508,7 @@ const extractStateFromUrl = () => {
 
   state.settings = defaultsDeep(state.settings, defaultSettings);
 
-  data.value = state;
+  return state
 };
 
 const selectedTask = computed(() => {
@@ -514,7 +539,6 @@ const today = computed(() => {
 const isActive = (task) => {
   return currentTask.value && currentTask.value.id === task.id;
 };
-applyFilters;
 
 const c = console;
 
@@ -534,8 +558,17 @@ const taskHasCategory = (task, categoryId) => {
 };
 
 const getCategory = (categoryId: string) => {
+  const categoriesList = clone(data.value.categories)
+
+  categoriesList.push({
+    name: 'Group',
+    color: "#333333",
+  })
+
+  // console.log(categoriesList)
+  
   return (
-    data.value.categories.filter(
+    categoriesList.filter(
       (category) => snakeCase(category.name) === snakeCase(categoryId)
     )[0] ?? {
       name: "No category",
@@ -552,6 +585,8 @@ const tagGroupAsCurrent = debounce((group) => {
 }, 100);
 
 watch(() => data.value.groups, updateUrlWithState, { deep: true });
+watch(() => data.value.sessions, updateUrlWithState, { deep: true });
+watch(() => data.value.currentSession, updateUrlWithState, { deep: true });
 
 function sendNotification(title, options) {
   if (!("Notification" in window)) {
@@ -570,8 +605,16 @@ function sendNotification(title, options) {
   }
 }
 
+const getAllTasks = (groups: Group[]) => {
+  return flatten(groups.map((group: Group) => flatten(group.tasks ?? [])));
+};
+
 onMounted(() => {
-  extractStateFromUrl();
+  initializeState();
+
+  if (!data.value.pageTitle) {
+    data.value.pageTitle = today.value;
+  }
 
   setInterval(() => {
     if (data.value.currentSession) {
@@ -589,16 +632,48 @@ onMounted(() => {
     }
   }, 1000);
 
+  console.log(data.value.sessions);
+
   data.value.groups.map((group) => {
     group.tasks.finished = [];
     group.tasks.backlog = group.tasks.backlog ?? [];
   });
 
-  if (selectedTask.value) {
+  console.log(data.value.currentSession);
+
+  if (!currentTask.value && data.value.currentSession?.task) {
+    currentTask.value = data.value.currentSession.task;
   }
 
   nextTick(() => (loading.value = false));
 });
+
+onUpdated(() => {
+
+  console.log('Updating... Check if sync is needed...')
+
+  const syncFrequencyInMinutes = 0.1
+  const lastSync = data.value.lastSync ?? 0
+
+  if (lastSync + (syncFrequencyInMinutes * 1000 * 60) <= Date.now()) {
+
+    console.log('Starting Sync to LocalStorage...')
+
+    nextTick(() => {
+
+      write('state', data.value)
+
+      const newSyncTimestamp = Date.now()
+
+      console.log(`Sync finished. New lastSync value: ${newSyncTimestamp}`)
+
+      data.value.lastSync = newSyncTimestamp
+
+    })
+
+  }
+
+})
 
 const getGroupBy = (value, field = "id") => {
   return find(data.value.groups, [field, value]);
@@ -631,7 +706,7 @@ const addTask = (group, position = "before", task?: Task) => {
 };
 
 const addGroup = () => {
-  data.value.groups.push(new Group());
+  data.value.groups.push(new Group(`Group ${data.value.groups.length + 1}`));
 
   focusGroup();
 };
@@ -738,12 +813,12 @@ const keymap = {
 </script>
 
 <template>
-  <div class="bg-gray-100 pb-24" v-hotkey="keymap" v-if="true">
+  <div class="min-h-full bg-gray-100 pb-24" v-hotkey="keymap" v-if="true">
     <ProgressBar :completed="completedTasks" :total="totalTasks" />
     <header class="bg-white shadow-sm print:hidden">
-      <div class="mx-auto container py-4 px-4 sm:px-6 lg:px-8">
-        <div class="md:flex items-center md:justify-between">
-          <div class="min-w-0 flex-1 flex items-center">
+      <div class="container mx-auto p-4 sm:px-6 lg:px-8">
+        <div class="items-center md:flex md:justify-between">
+          <div class="flex min-w-0 flex-1 items-center">
             <!-- <h2
               class="
                 text-2xl
@@ -757,91 +832,21 @@ const keymap = {
             </h2> -->
             <input
               class="
-                text-2xl
+                text-lg
                 font-medium
                 leading-7
                 text-gray-900
-                sm:truncate sm:text-2xl sm:tracking-tight
                 focus:outline-none
+                sm:truncate sm:text-xl sm:tracking-tight
+                lg:text-2xl
+                w-full
               "
               :size="data.pageTitle.length ? data.pageTitle.length - 4 : 20"
               :placeholder="today"
               v-model="data.pageTitle"
             />
           </div>
-          <div class="mt-4 flex md:mt-0 md:ml-4">
-            <!-- <span class="isolate inline-flex rounded-md">
-              <button
-                type="button"
-                class="
-                  relative
-                  hidden
-                  lg:inline-flex
-                  items-center
-                  rounded-md
-                  bg-white
-                  px-4
-                  py-2
-                  text-sm
-                  font-medium
-                  text-gray-700
-                  hover:bg-gray-50
-                  focus:z-10
-                  focus:border-indigo-500
-                  focus:outline-none
-                  focus:ring-1
-                  focus:ring-indigo-500
-                "
-                :class="!remainingSkips ? 'opacity-50' : ''"
-                @click.prevent="sidePanelOpen = !sidePanelOpen"
-              >
-                <ForwardIcon class="mr-2 -ml-1 h-5 w-5" aria-hidden="true" />
-                {{ remainingSkips ? "Skips" : "No skips available" }}
-                <span
-                  class="
-                    items-center
-                    rounded-full
-                    bg-green-100
-                    px-1.5
-                    ml-1
-                    py-0.5
-                    text-xs
-                    inline-flex
-                    font-medium
-                    text-green-800
-                  "
-                  v-if="remainingSkips"
-                  >{{ remainingSkips }}</span
-                >
-              </button>
-            </span> -->
-            <button @click.prevent="() => (settingsOpened = true)">
-              Settings
-            </button>
-            <button
-              @click.prevent="
-                () => {
-                  data = clearState();
-                }
-              "
-            >
-              Reset Day
-            </button>
-            <button
-              @click.prevent="
-                () => {
-                  const jsonToDownload = Object.assign({}, data, {
-                    hash,
-                  });
-                  download(
-                    JSON.stringify(jsonToDownload),
-                    `${exportFileName}.tasks.json`
-                  );
-                }
-              "
-            >
-              Export
-            </button>
+          <div class="mt-4 flex items-center md:mt-0 md:ml-4">
             <button
               type="button"
               class="
@@ -868,18 +873,274 @@ const keymap = {
               "
               @click.prevent="() => addGroup()"
             >
-              <PlusCircleIcon
+              <PlayCircleIcon
                 class="h-6 w-6 text-white mr-2"
                 aria-hidden="true"
               />
               Add Group
             </button>
+            <Menu as="div" class="relative ml-2 inline-block text-left">
+              <div>
+                <MenuButton
+                  class="
+                    flex
+                    items-center
+                    rounded-full
+                    text-gray-400
+                    focus:outline-none
+                    focus:ring-2
+                    focus:ring-indigo-500
+                    focus:ring-offset-2
+                    focus:ring-offset-gray-100
+                  "
+                >
+                  <span class="sr-only">Open options</span>
+                  <EllipsisVerticalIcon class="h-6 w-6" aria-hidden="true" />
+                </MenuButton>
+              </div>
+
+              <transition
+                enter-active-class="transition ease-out duration-100"
+                enter-from-class="transform opacity-0 scale-95"
+                enter-to-class="transform opacity-100 scale-100"
+                leave-active-class="transition ease-in duration-75"
+                leave-from-class="transform opacity-100 scale-100"
+                leave-to-class="transform opacity-0 scale-95"
+              >
+                <MenuItems
+                  class="
+                    absolute
+                    right-0
+                    z-20
+                    mt-2
+                    w-56
+                    origin-top-right
+                    divide-y divide-gray-100
+                    rounded-md
+                    bg-white
+                    shadow-lg
+                    ring-1 ring-black ring-opacity-5
+                    focus:outline-none
+                  "
+                >
+                  <div class="py-1">
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        @click.prevent="
+                          () => {
+                            data = clearState();
+                          }
+                        "
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <DocumentDuplicateIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Duplicate
+                      </a>
+                    </MenuItem>
+                  </div>
+                  <div class="py-1">
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        @click.prevent="() => (settingsOpened = true)"
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <Cog8ToothIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Settings
+                      </a>
+                    </MenuItem>
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <TagIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Categories
+                      </a>
+                    </MenuItem>
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <LinkIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Integrations
+                      </a>
+                    </MenuItem>
+                  </div>
+                  <div class="py-1">
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <UserPlusIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Share
+                      </a>
+                    </MenuItem>
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        @click.prevent="
+                          () => {
+                            const jsonToDownload = Object.assign({}, data, {
+                              hash,
+                            });
+                            download(
+                              JSON.stringify(jsonToDownload),
+                              `${exportFileName}.tasks.json`
+                            );
+                          }
+                        "
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <ArrowDownCircleIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Export
+                      </a>
+                    </MenuItem>
+                  </div>
+                  <div class="py-1">
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <CheckCircleIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Remove Finished
+                      </a>
+                    </MenuItem>
+                    <MenuItem v-slot="{ active }">
+                      <a
+                        href="#"
+                        :class="[
+                          active
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700',
+                          'group flex items-center px-4 py-2 text-sm',
+                        ]"
+                      >
+                        <TrashIcon
+                          class="
+                            mr-3
+                            h-5
+                            w-5
+                            text-gray-400
+                            group-hover:text-gray-500
+                          "
+                          aria-hidden="true"
+                        />
+                        Clear All
+                      </a>
+                    </MenuItem>
+                  </div>
+                </MenuItems>
+              </transition>
+            </Menu>
           </div>
         </div>
       </div>
     </header>
 
-    <div class="container mx-auto" v-auto-animate>
+    <div class="container mx-auto min-h-full" v-auto-animate>
       <div class="py-6">
         <div class="sm:hidden">
           <label for="tabs" class="sr-only">Select a tab</label>
@@ -946,7 +1207,7 @@ const keymap = {
           sm:gap-px sm:divide-y-0
         "
       >
-        <Calendar :sessions="data.sessions" />
+        <Calendar :sessions="data.sessions ?? []" :groups="data.groups" />
       </div>
       <div
         v-if="data.currentView === 'groups'"
@@ -1005,6 +1266,12 @@ const keymap = {
             </h3> -->
               <div class="flex items-center justify-between">
                 <input
+                  @input="
+                    ($event) => {
+                      group.name = $event.target.value.replace('->', '→');
+                    }
+                  "
+                  :value="group.name"
                   class="
                     -mt-2
                     bg-transparent
@@ -1014,15 +1281,54 @@ const keymap = {
                     text-gray-900
                     focus:outline-none
                   "
-                  v-model.lazy="group.name"
                   :id="`group-name-${group.id}`"
                   :placeholder="'Group ' + (groupIndex + 1)"
                 />
                 <div class="-mr-4 -mt-2 flex items-center">
-                  <div v-if="isGroupHovered(group)" class="p-2">
+                  <div
+                    v-if="isGroupHovered(group)"
+                    class="p-2"
+                    v-tooltip="'This group is currently selected'"
+                  >
                     <CheckIcon class="h-5 w-5 text-indigo-700" />
                   </div>
                   <button
+                    @click.prevent="() => pickTask(groupAsTask(group))"
+                    v-tooltip="'Run group as task'"
+                    class="
+                      group-move-handle
+                      hidden
+                      items-center
+                      rounded-full
+                      group-hover:flex
+                      bg-transparent
+                      p-2
+                      text-gray-400
+                      hover:text-gray-600
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500
+                    "
+                  >
+                    <PlayCircleIcon class="h-5 w-5" />
+                  </button>
+                  <button
+                    v-tooltip="'Pick task within this group'"
+                    @click.prevent="() => pickTaskInGroup(group)"
+                    class="
+                      hidden
+                      items-center
+                      rounded-full
+                      group-hover:flex
+                      bg-transparent
+                      p-2
+                      text-gray-400
+                      hover:text-gray-600
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500
+                    "
+                  >
+                    <BoltIcon class="h-5 w-5" />
+                  </button>
+                  <button
+                    v-tooltip="'Pull tasks from integrations'"
                     @click.prevent="() => pullTasks(group)"
                     class="
                       hidden
@@ -1040,6 +1346,7 @@ const keymap = {
                   </button>
                   <button
                     @click.prevent="() => {}"
+                    v-tooltip="'Drag to reorder groups'"
                     class="
                       group-move-handle
                       hidden
@@ -1058,6 +1365,7 @@ const keymap = {
                   <Menu as="div" class="relative inline-block text-left">
                     <div>
                       <MenuButton
+                        v-tooltip="'Group settings'"
                         class="
                           hidden
                           items-center
@@ -1087,7 +1395,7 @@ const keymap = {
                         class="
                           absolute
                           right-0
-                          z-10
+                          z-20
                           mt-2
                           w-72
                           origin-top-right
@@ -1234,11 +1542,22 @@ const keymap = {
                 :item-classes="group.ignore ? 'bg-gray-50' : 'bg-white'"
                 scope="tasks"
                 :picked-task="currentTask"
+                @task:done="(task, group) => doAction('task.completed', task, group)"
                 @task:mouseover="
                   (task, group) =>
                     (data.hoveredTask = { groupId: group.id, taskId: task.id })
                 "
+                @task:picked="(task, group) => pickTask(task)"
+                @update:last-category="
+                  (category) => (data.lastCategory = snakeCase(category.name))
+                "
                 @task:delete="(task, group) => deleteTask(group, task)"
+                @task:dblclick="
+                  (task) => {
+                    current.task = task;
+                    sidePanel = 'editTask';
+                  }
+                "
                 @task:create="
                   (group, position) => {
                     addTask(group, position);
@@ -1296,6 +1615,10 @@ const keymap = {
                 :class="[group.ignore ? 'bg-white' : 'bg-gray-50']"
                 :item-classes="group.ignore ? 'bg-white' : 'bg-gray-50'"
                 :picked-task="currentTask"
+                @task:picked="(task, group) => pickTask(task)"
+                @update:last-category="
+                  (category) => (data.lastCategory = snakeCase(category.name))
+                "
                 scope="tasks"
                 @task:mouseover="
                   (task, group) =>
@@ -1360,6 +1683,7 @@ const keymap = {
               <div class="flex justify-end">
                 <button
                   type="button"
+                  v-tooltip.left="'Add new task'"
                   class="
                     inline-flex
                     items-center
@@ -1417,9 +1741,16 @@ const keymap = {
 
     <ActiveTaskBar
       :task="currentTask"
+      :open="Boolean(currentTask)"
       :elapsedTime="secondsLeftInSeconds"
-      :session="data.currentSession"
-      :fullScreen="false"
+      :session="data?.currentSession"
+      :fullScreen="focusMode"
+      :categories="data.categories"
+      @close="focusMode = false"
+      @toggle-full-screen="focusMode = true"
+      @task:pick="pickATask"
+      @task:start="(task) => start(task)"
+      @task:complete-and-next="completeTaskAndPickNext"
     >
       <button
         v-if="currentTask"
@@ -1531,7 +1862,7 @@ const keymap = {
           shadow-sm
           hover:bg-indigo-50
         "
-        @click.prevent="() => pickATask()"
+        @click="() => pickATask()"
       >
         <BoltIcon class="mr-2 -ml-1 h-5 w-5" aria-hidden="true" />
         <span class="">Pick Task</span>
@@ -1539,7 +1870,14 @@ const keymap = {
     </ActiveTaskBar>
 
     <Teleport to="#modals">
-      <!-- <Panel /> -->
+      <EditTask
+        v-if="current.task"
+        v-model="current.task"
+        :open="sidePanel === 'editTask'"
+        @close="sidePanel = ''"
+        @save="sidePanel = ''"
+      />
+      <!-- <TaskDetails v-if="current.task" v-model="current" /> -->
       <!-- <SidePanel title="History" :open="true">
         <div>
           <table>
@@ -1561,7 +1899,6 @@ const keymap = {
         </div>
       </SidePanel> -->
     </Teleport>
-    <TaskDetails v-if="current.task" v-model="current" />
     <!-- <CommandBar /> -->
     <Settings
       :open="settingsOpened"
