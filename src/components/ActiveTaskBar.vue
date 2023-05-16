@@ -176,8 +176,8 @@ const formatDuration = (duration) => {
                         </div>
                       </div>
                       <h2
-                        :class="session ? 'order-5' : 'order-1'"
-                        class="mt-4 text-lg font-semibold"
+                        :class="session ? 'order-6 opacity-0 -mt-4' : 'order-1 mt-4'"
+                        class="text-lg font-semibold transition-all"
                         :style="`color: ${getCategory(task.category).color}`"
                       >
                         {{ getCategory(task.category).name }}
@@ -189,7 +189,8 @@ const formatDuration = (duration) => {
                             ? md(task.description)
                             : 'Time to get to work!'
                         "
-                        class="task-md-content mx-auto mt-16 max-h-96 max-w-xl text-base text-gray-500"
+                        :class="session ? 'order-5 mt-0' : 'order-3'"
+                        class="task-md-content mx-auto max-h-96 max-w-xl text-base text-gray-500"
                       ></div>
                       <div
                         class="mt-4"

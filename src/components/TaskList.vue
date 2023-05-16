@@ -14,9 +14,9 @@ import {
 import TaskCheck from "./TaskCheck.vue";
 import TaskCanceledCheck from "./TaskCanceledCheck.vue";
 import Empty from "./Empty.vue";
-import { toRefs, defineEmits, onMounted, onUpdated } from "vue";
-import { filter, partition, remove, snakeCase, isNull } from "lodash";
-import { applyFilters } from "@wordpress/hooks";
+import { toRefs, defineEmits, onMounted, onUpdated, ref, computed } from "vue";
+import { filter, partition, remove, snakeCase, isNull, clone } from "lodash";
+import { addAction, addFilter, applyFilters, doAction } from "@wordpress/hooks";
 import { VueDraggableNext } from "vue-draggable-next";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
 
@@ -44,6 +44,18 @@ const {
 } = toRefs(props);
 
 const c = console;
+
+const currentInput = ref(null)
+
+const setCurrentInput = (input, task) => {
+  console.log(input, task)
+  currentInput.value = clone(task)
+}
+
+const focusedTaskId = computed(() => {
+  console.log('the id', currentInput.value?.id)
+  return currentInput.value?.id
+})
 
 const isTaskSelected = (task) => {
   return selectedTasks.value.includes(task.id);
@@ -73,6 +85,13 @@ const getTaskTitleInput = (group, task) => {
 const isTaskActive = (task) => {
   return pickedTask?.value?.id === task.id;
 };
+
+addAction('task.process.title', 'core', (title, task, group) => task.title = title)
+
+// addAction('task.process.title', 'core', (title, task, group) => console.log(title))
+
+const processTaskTitle = (title, task, group) => doAction('task.process.title', title, task, group);
+const processTaskTitleView = (title, task, group) => applyFilters('task.process.title.view', title, task, group);
 
 const emit = defineEmits([
   "update:modelValue",
@@ -210,12 +229,13 @@ onMounted(checkOverflow);
                     truncate
                     mr-2
                   "
+                  @input="(event) => processTaskTitle(event.target.value, task, group)"
+                  :value="task.title"
                   :class="[
                     task.done || task?.canceled
                       ? 'line-through opacity-50'
                       : '',
                   ]"
-                  v-model="task.title"
                   @dblclick="() => emit('task:dblclick', task)"
                   @keydown.delete="
                     (e) => {
