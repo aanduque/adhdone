@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, toRefs } from "vue";
 import { MagnifyingGlassIcon } from "@heroicons/vue/20/solid";
 import {
   ExclamationTriangleIcon,
@@ -38,7 +38,13 @@ const users = [
   // More users...
 ];
 
-const open = ref(true);
+const props = defineProps({
+  open: Boolean,
+});
+
+const emit = defineEmits(["update:open"]);
+
+const open = toRefs(props).open;
 const rawQuery = ref("");
 const query = computed(() => rawQuery.value.toLowerCase().replace(/^[#>]/, ""));
 const filteredProjects = computed(() =>
@@ -70,7 +76,7 @@ function onSelect(item) {
     @after-leave="rawQuery = ''"
     appear
   >
-    <Dialog as="div" class="relative z-10" @close="open = false">
+    <Dialog as="div" class="relative z-10" @close="() => emit('update:open')">
       <TransitionChild
         as="template"
         enter="ease-out duration-300"
@@ -96,46 +102,16 @@ function onSelect(item) {
           leave-to="opacity-0 scale-95"
         >
           <DialogPanel
-            class="
-              mx-auto
-              max-w-xl
-              transform
-              divide-y divide-gray-100
-              overflow-hidden
-              rounded-xl
-              bg-white
-              shadow-2xl
-              ring-1 ring-black ring-opacity-5
-              transition-all
-            "
+            class="mx-auto max-w-xl transform divide-y divide-gray-100 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black ring-opacity-5 transition-all"
           >
             <Combobox @update:modelValue="onSelect">
               <div class="relative">
                 <MagnifyingGlassIcon
-                  class="
-                    pointer-events-none
-                    absolute
-                    top-3.5
-                    left-4
-                    h-5
-                    w-5
-                    text-gray-400
-                  "
+                  class="pointer-events-none absolute top-3.5 left-4 h-5 w-5 text-gray-400"
                   aria-hidden="true"
                 />
                 <ComboboxInput
-                  class="
-                    h-12
-                    w-full
-                    border-0
-                    bg-transparent
-                    pl-11
-                    pr-4
-                    text-gray-800
-                    placeholder-gray-400
-                    focus:ring-0
-                    sm:text-sm
-                  "
+                  class="h-12 w-full border-0 bg-transparent pl-11 pr-4 text-gray-800 placeholder-gray-400 focus:ring-0 sm:text-sm"
                   placeholder="Search..."
                   @change="rawQuery = $event.target.value"
                 />
@@ -144,14 +120,7 @@ function onSelect(item) {
               <ComboboxOptions
                 v-if="filteredProjects.length > 0 || filteredUsers.length > 0"
                 static
-                class="
-                  max-h-80
-                  scroll-py-10 scroll-pb-2
-                  space-y-4
-                  overflow-y-auto
-                  p-4
-                  pb-2
-                "
+                class="max-h-80 scroll-py-10 scroll-pb-2 space-y-4 overflow-y-auto p-4 pb-2"
               >
                 <li v-if="filteredProjects.length > 0">
                   <h2 class="text-xs font-semibold text-gray-900">Projects</h2>
@@ -252,14 +221,7 @@ function onSelect(item) {
               </div>
 
               <div
-                class="
-                  flex flex-wrap
-                  items-center
-                  bg-gray-50
-                  py-2.5
-                  px-4
-                  text-xs text-gray-700
-                "
+                class="flex flex-wrap items-center bg-gray-50 py-2.5 px-4 text-xs text-gray-700"
               >
                 Type
                 <kbd

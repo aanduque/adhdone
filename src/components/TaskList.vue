@@ -2,8 +2,6 @@
 import {
   CheckIcon,
   XMarkIcon,
-  ArchiveBoxArrowDownIcon,
-  ClipboardDocumentCheckIcon,
   EllipsisVerticalIcon,
   BoltIcon,
   TagIcon,
@@ -14,11 +12,12 @@ import {
 import TaskCheck from "./TaskCheck.vue";
 import TaskCanceledCheck from "./TaskCanceledCheck.vue";
 import Empty from "./Empty.vue";
-import { toRefs, defineEmits, onMounted, onUpdated, ref, computed } from "vue";
-import { filter, partition, remove, snakeCase, isNull, clone } from "lodash";
-import { addAction, addFilter, applyFilters, doAction } from "@wordpress/hooks";
+import { toRefs, onMounted, onUpdated, ref, computed } from "vue";
+import { partition, snakeCase, clone } from "lodash";
+import { addAction, applyFilters, doAction } from "@wordpress/hooks";
 import { VueDraggableNext } from "vue-draggable-next";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
+import EditableText from "./EditableText.vue";
 
 const props = defineProps<{
   pickedTask?: Record<string, any>;
@@ -44,18 +43,6 @@ const {
 } = toRefs(props);
 
 const c = console;
-
-const currentInput = ref(null)
-
-const setCurrentInput = (input, task) => {
-  console.log(input, task)
-  currentInput.value = clone(task)
-}
-
-const focusedTaskId = computed(() => {
-  console.log('the id', currentInput.value?.id)
-  return currentInput.value?.id
-})
 
 const isTaskSelected = (task) => {
   return selectedTasks.value.includes(task.id);
@@ -86,12 +73,18 @@ const isTaskActive = (task) => {
   return pickedTask?.value?.id === task.id;
 };
 
-addAction('task.process.title', 'core', (title, task, group) => task.title = title)
+addAction(
+  "task.process.title",
+  "core",
+  (title, task, group) => (task.title = title)
+);
 
 // addAction('task.process.title', 'core', (title, task, group) => console.log(title))
 
-const processTaskTitle = (title, task, group) => doAction('task.process.title', title, task, group);
-const processTaskTitleView = (title, task, group) => applyFilters('task.process.title.view', title, task, group);
+const processTaskTitle = (title, task, group) =>
+  doAction("task.process.title", title, task, group);
+const processTaskTitleView = (title, task, group) =>
+  applyFilters("task.process.title.view", title, task, group);
 
 const emit = defineEmits([
   "update:modelValue",
@@ -161,21 +154,18 @@ onMounted(checkOverflow);
         :group="{
           name: scope,
           pull: true,
-          put: maxTasks ? modelValue.length < maxTasks : true,
+          put: (item1, item2) => {
+            if (item1.options.group.name !== item2.options.group.name) {
+              return false;
+            }
+            return maxTasks ? modelValue.length < maxTasks : true;
+          },
         }"
       >
         <div
-          class="
-            flex flex-1
-            items-center
-            py-4
-            px-4
-            border-l-4
-            group
-            print:border-none
-            transition-all
-          "
+          class="py-4 px-4 border-l-4 group print:border-none transition-all"
           v-for="(task, taskIndex) in modelValue"
+          v-touch:longtap="() => emit('task:picked', task, group)"
           @mouseover="() => emit('task:mouseover', task, group)"
           :class="[
             'bg-white',
@@ -195,7 +185,7 @@ onMounted(checkOverflow);
           :style="{ borderLeftColor: getCategory(task.category).color }"
           :key="taskIndex"
         >
-          <div class="flex flex-1">
+          <div class="flex items-center text-sm w-full">
             <TaskCheck
               v-model="task.done"
               v-if="!(task.canceled ?? false)"
@@ -207,70 +197,51 @@ onMounted(checkOverflow);
               "
             />
             <TaskCanceledCheck v-else v-tooltip="'This task was canceled'" />
-
-            <div class="text-sm flex flex-1 gap-2">
-              <label
-                :for="`task-name-${group.id}-${task.id}`"
-                class="
-                  font-medium
-                  text-gray-700
-                  focus:b-0 focus:outline-none
-                  flex flex-1
-                "
-              >
-                <input
-                  :id="`task-name-${group.id}-${task.id}`"
-                  class="
-                    font-normal
-                    text-gray-700
-                    bg-transparent
-                    focus:border-none focus:outline-none
-                    flex flex-grow flex-1
-                    truncate
-                    mr-2
-                  "
-                  @input="(event) => processTaskTitle(event.target.value, task, group)"
-                  :value="task.title"
-                  :class="[
-                    task.done || task?.canceled
-                      ? 'line-through opacity-50'
-                      : '',
-                  ]"
-                  @dblclick="() => emit('task:dblclick', task)"
-                  @keydown.delete="
-                    (e) => {
-                      if (task.title.length === 0) {
-                        e.preventDefault();
-                        emit('task:delete', task, group);
-                      }
-                    }
-                  "
-                  @keyup.esc="
-                    () => {
-                      if (task.title.length === 0) {
-                        emit('task:delete', task, group);
-                      } else {
-                        const input = getTaskTitleInput(group, task);
-                        input?.blur();
-                      }
-                    }
-                  "
-                  @keyup.enter="
-                    () => {
-                      const input = getTaskTitleInput(group, task);
-                      input?.blur();
-                    }
-                  "
-                  @keyup.shift.enter.exact="
-                    () => {
-                      emit('task:create', group, 'after');
-                    }
-                  "
-                  placeholder="Task"
-                />
-              </label>
+            <EditableText
+              :id="`task-name-${group.id}-${task.id}`"
+              class="font-normal flex-grow text-gray-700 bg-transparent focus:border-none focus:outline-none mr-2"
+              @input="
+                (event) => processTaskTitle(event.target.value, task, group)
+              "
+              :value="task.title"
+              :class="[
+                task.done || task?.canceled ? 'line-through opacity-50' : '',
+              ]"
+              @dblclick="() => emit('task:dblclick', task)"
+              @keydown.delete="
+                (e) => {
+                  if (task.title.length === 0) {
+                    e.preventDefault();
+                    emit('task:delete', task, group);
+                  }
+                }
+              "
+              @keyup.esc="
+                () => {
+                  if (task.title.length === 0) {
+                    emit('task:delete', task, group);
+                  } else {
+                    const input = getTaskTitleInput(group, task);
+                    input?.blur();
+                  }
+                }
+              "
+              @keyup.enter="
+                () => {
+                  const input = getTaskTitleInput(group, task);
+                  input?.blur();
+                }
+              "
+              @keyup.shift.enter.exact="
+                () => {
+                  emit('task:create', group, 'after');
+                }
+              "
+              placeholder="Task"
+            />
+            <div class="text-sm flex flex-shrink items-center gap-2">
               <span
-                class="inline-flex flex items-center mx-1"
+                class="flex items-center mx-1"
                 v-html="applyFilters('task.labels', '', task, group)"
               ></span>
 
@@ -306,29 +277,11 @@ onMounted(checkOverflow);
 
               <Menu
                 as="div"
-                class="
-                  relative
-                  inline-block
-                  text-left
-                  justify-self-end
-                  drag-item
-                "
+                class="relative inline-block text-left justify-self-end"
               >
                 <div>
                   <MenuButton
-                    class="
-                      hidden
-                      group-hover:flex
-                      items-center
-                      rounded-full
-                      text-gray-400
-                      hover:text-gray-600
-                      focus:outline-none
-                      focus:ring-2
-                      focus:ring-indigo-500
-                      focus:ring-offset-2
-                      focus:ring-offset-gray-100
-                    "
+                    class="flex items-center rounded-full text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-100"
                   >
                     <span class="sr-only">Open options</span>
                     <EllipsisVerticalIcon class="h-5 w-5" aria-hidden="true" />
@@ -344,20 +297,7 @@ onMounted(checkOverflow);
                   leave-to-class="transform opacity-0 scale-95"
                 >
                   <MenuItems
-                    class="
-                      absolute
-                      right-0
-                      z-20
-                      mt-2
-                      w-56
-                      origin-top-right
-                      divide-y divide-gray-100
-                      rounded-md
-                      bg-white
-                      shadow-lg
-                      ring-1 ring-black ring-opacity-5
-                      focus:outline-none
-                    "
+                    class="absolute right-0 z-20 mt-2 w-56 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
                   >
                     <div class="py-1">
                       <MenuItem v-slot="{ active }">
@@ -374,13 +314,7 @@ onMounted(checkOverflow);
                           ]"
                         >
                           <BoltIcon
-                            class="
-                              mr-3
-                              h-5
-                              w-5
-                              text-gray-400
-                              group-hover:text-gray-500
-                            "
+                            class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                             aria-hidden="true"
                           />
                           Pick Task
@@ -404,13 +338,7 @@ onMounted(checkOverflow);
                         >
                           <span class="flex">
                             <ArrowPathIcon
-                              class="
-                                mr-3
-                                h-5
-                                w-5
-                                text-gray-400
-                                group-hover:text-gray-500
-                              "
+                              class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                               aria-hidden="true"
                             />
                             Recurring
@@ -479,13 +407,7 @@ onMounted(checkOverflow);
                           ]"
                         >
                           <XMarkIcon
-                            class="
-                              mr-3
-                              h-5
-                              w-5
-                              text-gray-400
-                              group-hover:text-gray-500
-                            "
+                            class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                             aria-hidden="true"
                           />
                           Cancel
@@ -505,13 +427,7 @@ onMounted(checkOverflow);
                           ]"
                         >
                           <TrashIcon
-                            class="
-                              mr-3
-                              h-5
-                              w-5
-                              text-gray-400
-                              group-hover:text-gray-500
-                            "
+                            class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                             aria-hidden="true"
                           />
                           Delete

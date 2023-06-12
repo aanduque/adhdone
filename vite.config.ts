@@ -8,7 +8,7 @@ import { VitePWA } from "vite-plugin-pwa";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const basePath = mode === "production" ? "/adhdone/" : "/";
+  const basePath = mode === "production" ? "/" : "/";
   return {
     base: basePath,
     plugins: [
@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
           description: "Finish your tasks, one day at a time.",
           start_url: basePath,
           theme_color: "#1f2937",
-          background_color: "#f3f4f6",
+          background_color: "#ffffff",
           display: "standalone",
           icons: [
             {

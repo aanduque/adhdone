@@ -13,16 +13,7 @@ const percentage = computed(() => {
 
 <template>
   <div
-    class="
-      relative
-      w-full
-      h-1
-      group
-      hover:h-7
-      bg-gray-600
-      transition-all
-      print:hidden
-    "
+    class="relative w-full h-2 md:h-1 group hover:h-7 bg-gray-600 transition-all print:hidden overflow-hidden"
   >
     <div
       v-if="total > 0"
