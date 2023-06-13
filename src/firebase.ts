@@ -1,6 +1,5 @@
 import { initializeApp } from 'firebase/app'
 import { getFirestore, collection } from 'firebase/firestore'
-import { getMessaging } from 'firebase/messaging'
 
 /**
  * Additional elements of Firebase we'll use.
@@ -21,5 +20,3 @@ export const firebaseApp = initializeApp({
 export const db = getFirestore(firebaseApp)
 
 export const todosRef = collection(db, 'todos')
-
-export const messaging = getMessaging(firebaseApp);

@@ -1,12 +1,13 @@
 <script setup>
-import { computed, provide, ref, watch } from "vue";
+import { computed, onMounted, provide, ref, watch } from "vue";
 import { useCurrentUser } from "vuefire";
 import Hello from "./components/Hello.vue";
 import Loading from "./components/Loading.vue";
 import Background from "./components/Background.vue";
 import Shell from "./components/Shell.vue";
-import * as app from "./app/index";
+import * as app from "./app/views";
 import { requestPermission } from "./auth";
+import { useStore } from "vuex";
 
 /**
  * Provide the app structure to the rest of tree.
@@ -22,6 +23,8 @@ provide("app", app);
  */
 const loading = ref(true);
 
+const initialStateSet = ref(false);
+
 /**
  * Starts the process of loading the user from the auth state.
  */
@@ -31,6 +34,28 @@ const user = useCurrentUser();
  * Make the user available to the entire app.
  */
 provide("user", user);
+
+/**
+ * Initial setup of the app, including loading the remote state.
+ */
+onMounted(() => {
+  const store = useStore();
+
+  /**
+   * Check the mutation being run and if it's the one that sets the initial state,
+   * we can stop showing the loader.
+   */
+  store.subscribe((mutation) => {
+    if (mutation.type === "setInitialState" && mutation.payload.fromServer) {
+      initialStateSet.value = true;
+    }
+  });
+
+  /**
+   * When the app loads, we need to fetch the remote state.
+   */
+  store.dispatch("fetchRemoteState");
+});
 
 /**
  * When the user is loaded, we can stop showing the loader.
@@ -45,14 +70,20 @@ watch(user, (user) => {
 });
 
 /**
+ * Set the qpp badge to the minutes left on the session.
+ */
+if (navigator.setAppBadge) {
+  navigator.setAppBadge(20);
+}
+
+/**
  * Decides the main component based on the user state.
  */
 const mainComponent = computed(() => {
   /**
    * If we're loading, user is undefined.
    */
-  console.log(loading.value, user);
-  if (loading.value) {
+  if (loading.value || !initialStateSet.value) {
     return Loading;
   }
 

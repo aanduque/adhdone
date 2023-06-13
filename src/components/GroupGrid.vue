@@ -3,6 +3,7 @@ import { onMounted, ref, computed, nextTick } from "vue";
 import { doAction } from "@wordpress/hooks";
 import imgBgUrl from "@/assets/groups-bg.png";
 import LZString from "lz-string";
+import { toast } from "vue3-toastify";
 import { VueDraggableNext } from "vue-draggable-next";
 import {
   capitalize,
@@ -25,7 +26,7 @@ import initHooks from "../defaultHooks";
 import { defaultSettings } from "../data/defaultSettings";
 import { useStore } from "vuex";
 import keymaps from "../keymaps";
-import { getView } from "@/app";
+import { getView } from "@/app/views";
 import GroupMenu from "./GroupMenu.vue";
 import EditableText from "./EditableText.vue";
 
@@ -141,6 +142,9 @@ const today = computed(() => {
 });
 
 const isGroupOpened = (group) => {
+  if (data.value.currentView === "minimized") {
+    return false;
+  }
   return openedGroups.value[group.name] ?? false;
 };
 
@@ -172,6 +176,8 @@ onMounted(() => {
 
   nextTick(() => (loading.value = false));
 });
+
+const activeGroupDescription = ref(null);
 
 const addTask = (group, position = "before", task?: Task) => {
   toggleGroup(group, true);
@@ -214,29 +220,23 @@ const deleteTask = (group, task) => {
   <div v-hotkey="keymap" class="container mx-auto pb-40">
     <div
       v-auto-animate
-      class="relative rounded-lg border border-gray-200 bg-gray-50 shadow"
+      class="relative rounded-lg border border-gray-200 bg-white shadow"
     >
-      <div
-        class="absolute inset-0 bg-no-repeat opacity-10"
-        :style="`background-image: url(${imgBgUrl}); background-size: 600px; background-position: right 105%; z-index: 0; -webkit-filter: grayscale(100%); filter: grayscale(100%);`"
-      >
-        &nbsp;
-      </div>
-
       <VueDraggableNext
         ghost-class="group-ghost"
         handle=".group-move-handle"
         group="groups"
-        class="divide-y divide-gray-200 sm:grid md:grid-cols-2 lg:grid-cols-3"
+        class="sm:grid md:grid-cols-2 lg:grid-cols-3"
       >
         <div
           v-for="(group, groupIndex) in data.groups"
           @mouseover="() => tagGroupAsCurrent(group)"
+          v-scroll-to="group.tasks.active.length <= 0"
           :key="group.id"
           :class="[
-            'border-gray-200',
-            'bg-white',
+            'border-b border-gray-150 md:border-r last:border-b-0',
             'relative group p-8 flex flex-col',
+            data.currentView === 'minimized' ? 'justitfy-center' : '',
           ]"
         >
           <div class="mt-0 relative">
@@ -248,14 +248,9 @@ const deleteTask = (group, task) => {
               >
                 <Bars4Icon class="h-7 w-7" />
               </button>
-              <div class="mb-2">
+              <div :class="[data.currentView !== 'minimized' ? 'mb-2' : '']">
                 <EditableText
-                  @input="
-                    ($event) => {
-                      group.name = $event.target.value.replace('->', '→');
-                    }
-                  "
-                  :value="group.name"
+                  v-model="group.name"
                   class="bg-transparent text-lg font-medium text-gray-900 focus:outline-none"
                   :id="`group-name-${group.id}`"
                   :placeholder="'Group ' + (groupIndex + 1)"
@@ -274,10 +269,16 @@ const deleteTask = (group, task) => {
               </div>
             </div>
             <p
+              v-if="data.currentView !== 'minimized'"
               class="word-wrap mt-1 text-sm text-gray-500 focus:outline-none"
               @input="
                 (e) => {
                   group.description = e.target.innerText;
+                }
+              "
+              @blur="
+                (e) => {
+                  // toast.success('Group description updated', 'success');
                 }
               "
               contenteditable="true"
@@ -287,7 +288,11 @@ const deleteTask = (group, task) => {
             </p>
           </div>
 
-          <div class="mt-6 mb-4" v-auto-animate>
+          <div
+            class="mt-6 mb-4"
+            v-auto-animate
+            v-if="data.currentView !== 'minimized'"
+          >
             <div
               class="relative z-10 -mr-8 ml-[-28px] mb-[-11px]"
               v-if="isGroupOpened(group)"
@@ -309,6 +314,7 @@ const deleteTask = (group, task) => {
             <!-- Open Tasks -->
             <TaskList
               v-model="group.tasks.active"
+              v-if="data.currentView !== 'minimized'"
               :display-empty-block="true"
               :group="group"
               :active-task="selectedTask"
@@ -414,9 +420,15 @@ const deleteTask = (group, task) => {
           </div>
 
           <div
+            v-if="data.currentView !== 'minimized'"
             class="align-self mt-auto -mb-4 -mr-5 -ml-3 flex items-center justify-between"
           >
-            <div v-if="group.tasks?.backlog?.length" class="">
+            <div
+              v-if="
+                group.tasks?.backlog?.length && data.currentView !== 'minimized'
+              "
+              class=""
+            >
               <a
                 href="#"
                 class="flex justify-items-center text-xs text-gray-400"
@@ -442,7 +454,10 @@ const deleteTask = (group, task) => {
             </div>
             <div v-else>&nbsp;</div>
 
-            <div class="flex justify-end">
+            <div
+              class="flex justify-end"
+              v-if="data.currentView !== 'minimized'"
+            >
               <button
                 type="button"
                 v-tooltip.left="'Add new task'"
@@ -466,6 +481,7 @@ const deleteTask = (group, task) => {
 .ghost,
 .group-ghost {
   @apply relative bg-gray-50 transition-all overflow-hidden;
+  background-color: #fff !important;
 }
 
 .ghost::after {

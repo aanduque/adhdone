@@ -6,11 +6,11 @@ import { doc, setDoc } from "firebase/firestore";
 
 export const requestPermission = (user) => {
 
-  const messaging = getMessaging(firebaseApp);
-
-  console.log("Requesting User Permission......");
-
   try {
+
+    const messaging = getMessaging(firebaseApp);
+
+    console.log("Requesting User Permission......");
 
     Notification.requestPermission().then((permission) => {
 

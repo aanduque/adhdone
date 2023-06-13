@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import {
   XMarkIcon,
-  CheckCircleIcon,
   ClockIcon,
-  PlusIcon,
-  BoltIcon,
-  ExclamationTriangleIcon,
   PlayIcon,
   ForwardIcon,
   ChevronDownIcon,
+  CheckCircleIcon,
+  BoltIcon,
 } from "@heroicons/vue/24/outline";
 import imgBgUrl from "@/assets/groups-bg.png";
 import moment from "moment";
@@ -24,6 +22,7 @@ import {
 } from "@headlessui/vue";
 import { clone, snakeCase } from "lodash";
 import { applyFilters } from "@wordpress/hooks";
+import { useStore } from "vuex";
 
 const md = (content) => markdown.toHTML(content);
 
@@ -35,28 +34,33 @@ const emit = defineEmits([
   "toggleFullScreen",
 ]);
 
-const props = defineProps<{
-  open: boolean;
-  task: any;
-  fullScreen?: boolean;
-  session?: any;
-  elapsedTime?: any;
-  categories?: any;
-}>();
+const { state, getters, commit } = useStore();
+
+const task = computed(() => state.currentTask);
+
+const categories = computed(() => state.categories);
+
+const session = computed(() => state.currentSession);
+
+const open = computed(() => Boolean(task.value));
+
+const barOpen = computed(() => state.barOpen);
+
+const elapsedTime = ref(0);
 
 momentDurationFormat(moment);
 
 const additionalElements = computed(() => {
-  return applyFilters("active.task.extra", "", props.task, props.session);
+  return applyFilters("active.task.extra", "", task.value, session.value);
 });
 
 const getCategory = (categoryId: string) => {
-  const categoriesList = clone(props.categories)
+  const categoriesList = clone(categories.value);
 
   categoriesList.push({
-    name: 'Group',
+    name: "Group",
     color: "#333333",
-  })
+  });
 
   return (
     categoriesList.filter(
@@ -76,13 +80,9 @@ const formatDuration = (duration) => {
 <template>
   <div>
     <div
-      class="z-5 fixed flex flex-col justify-end print:hidden"
+      class="fixed flex flex-col justify-end print:hidden"
       v-auto-animate
-      :class="
-        task && (fullScreen ?? false)
-          ? 'inset-0'
-          : 'bottom-0 inset-x-0 mb-4 mx-4'
-      "
+      :class="task && barOpen ? 'inset-0' : 'bottom-0 inset-x-0 mb-4 mx-4'"
     >
       <div class="flex justify-end">
         <button
@@ -98,8 +98,8 @@ const formatDuration = (duration) => {
         </button>
       </div>
     </div>
-    <TransitionRoot as="template" :show="open && fullScreen">
-      <Dialog as="div" class="relative z-30" @close="emit('close')">
+    <TransitionRoot as="template" :show="open && barOpen">
+      <Dialog as="div" class="relative" @close="emit('close')">
         <TransitionChild
           as="template"
           enter="ease-out duration-300"
@@ -114,7 +114,7 @@ const formatDuration = (duration) => {
           />
         </TransitionChild>
 
-        <div class="fixed inset-4 z-30">
+        <div class="fixed inset-4">
           <div
             class="flex min-h-full flex-col justify-between text-center sm:items-center sm:p-0"
           >
@@ -176,7 +176,9 @@ const formatDuration = (duration) => {
                         </div>
                       </div>
                       <h2
-                        :class="session ? 'order-6 opacity-0 -mt-4' : 'order-1 mt-4'"
+                        :class="[
+                          session ? 'order-6 opacity-0 -mt-4' : 'order-1 mt-4',
+                        ]"
                         class="text-lg font-semibold transition-all"
                         :style="`color: ${getCategory(task.category).color}`"
                       >
@@ -268,9 +270,9 @@ const formatDuration = (duration) => {
         </div>
       </Dialog>
     </TransitionRoot>
-    <TransitionRoot as="template" :show="open && !fullScreen">
-      <Dialog as="div" class="relative z-30" @close="emit('close')">
-        <div class="fixed inset-x-0 bottom-0 z-30 mx-4 mb-4">
+    <TransitionRoot as="template" :show="open && !barOpen">
+      <Dialog as="div" class="relative" @close="emit('close')">
+        <div class="fixed inset-x-0 bottom-0 mx-4 mb-4">
           <div
             class="flex min-h-full flex-col justify-between text-center sm:items-center sm:p-0"
           >
@@ -288,9 +290,9 @@ const formatDuration = (duration) => {
               >
                 <div class="w-full bg-indigo-600" v-if="task">
                   <div class="mx-auto p-3 sm:px-6 lg:px-4">
-                    <div class="flex flex-wrap items-center justify-between">
+                    <div class="flex items-center justify-between">
                       <!-- Item -->
-                      <div class="flex w-0 flex-1 items-center" v-if="task">
+                      <div class="flex items-center" v-if="task">
                         <span
                           class="hidden rounded-lg bg-indigo-800 p-2 md:flex"
                           v-auto-animate
@@ -315,14 +317,18 @@ const formatDuration = (duration) => {
                           title="Enter focus mode"
                           v-tooltip="'Click to enter focus mode'"
                           href="#"
-                          class="ml-3 flex gap-2 text-white"
-                          @click.prevent="emit('toggleFullScreen')"
+                          class="ml-3 flex flex-grow gap-2 text-white"
+                          @click.prevent="barOpen = !barOpen"
                         >
-                          <span class="font-medium text-indigo-200">
+                          <span
+                            class="font-medium text-indigo-200 hidden sm:block"
+                          >
                             {{ getCategory(task.category).name }}</span
                           >
-                          <span class="text-indigo-200">•</span>
-                          <span class="font-medium">{{ task.title }}</span>
+                          <span class="text-indigo-200 hidden sm:block">•</span>
+                          <span class="font-medium truncate">{{
+                            task.title
+                          }}</span>
                           <span
                             v-if="task.description"
                             class="hidden w-56 truncate text-indigo-200 md:inline"
@@ -331,7 +337,7 @@ const formatDuration = (duration) => {
                         </a>
                       </div>
 
-                      <div class="flex w-0 flex-1 items-center" v-else>
+                      <div class="flex items-center" v-else>
                         <span class="flex rounded-lg bg-indigo-800 p-2">
                           <CheckCircleIcon
                             class="h-6 w-6 text-white"
@@ -344,9 +350,80 @@ const formatDuration = (duration) => {
                       </div>
 
                       <div
-                        class="order-3 mt-0 flex w-full shrink-0 gap-x-2 sm:order-2 sm:w-auto"
+                        class="order-3 mt-0 flex flex-shrink gap-x-2 sm:order-2"
                       >
-                        <slot></slot>
+                        <button
+                          v-if="task"
+                          :disabled="
+                            !(task !== null && !task.jumped) ||
+                            !getters.remainingSkips
+                          "
+                          @click.prevent="jump"
+                          type="button"
+                          :class="
+                            !(task !== null && !task.jumped) ||
+                            !getters.remainingSkips
+                              ? 'opacity-50'
+                              : ''
+                          "
+                          class="inline-flex items-center rounded-md px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        >
+                          <ForwardIcon
+                            class="h-5 w-5 lg:mr-2 lg:-ml-1"
+                            aria-hidden="true"
+                          />
+                          <span class="hidden lg:block">
+                            {{
+                              !(task !== null && !task.jumped)
+                                ? "Already Skipped"
+                                : getters.remainingSkips
+                                ? "Skip"
+                                : "No skips left"
+                            }}
+                          </span>
+                        </button>
+                        <a
+                          v-if="task && !state.currentSession"
+                          @click.prevent="() => commit('startSession', task)"
+                          class="group flex items-center justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm hover:bg-indigo-50"
+                          href="#"
+                        >
+                          <PlayIcon
+                            class="h-5 w-5 lg:mr-2 lg:-ml-1"
+                            aria-hidden="true"
+                          />
+                          <span
+                            class="hidden transition duration-200 ease-out lg:block"
+                            >Start</span
+                          >
+                        </a>
+                        <a
+                          v-if="task && state.currentSession"
+                          @click.prevent="completeTaskAndPickNext"
+                          class="group flex items-center justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm hover:bg-indigo-50"
+                          href="#"
+                        >
+                          <CheckCircleIcon
+                            class="h-5 w-5 lg:mr-2 lg:-ml-1"
+                            aria-hidden="true"
+                          />
+                          <span
+                            class="hidden transition duration-200 ease-out lg:block"
+                            >I'm done</span
+                          >
+                        </a>
+
+                        <button
+                          v-if="!task"
+                          class="flex items-center justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm hover:bg-indigo-50"
+                          @click="() => pickATask()"
+                        >
+                          <BoltIcon
+                            class="mr-2 -ml-1 h-5 w-5"
+                            aria-hidden="true"
+                          />
+                          <span class="">Pick Task</span>
+                        </button>
                       </div>
                       <div class="order-2 hidden shrink-0 sm:order-3 sm:ml-3">
                         <button

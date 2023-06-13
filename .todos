@@ -1,10 +1,173 @@
-- Por enquanto, remover o calendar view
+The idea of this document is to list and describe the features we still want to add to Daily.
+Our top-priority is to make sure we finish the features we need to make it a viable alternative to the current Daily.
+That's important to keep our focus on, as it is really hard to focus on that when we have so many ideas for the future.
 
-Adicionar opção de salvar como LocalStorage:
+Now:
+  - The user should be able to quickly add a new task to the inbox
 
-Adicionar opção que me permita escrever hooks utilizando código, para poder conectar o Daily com o N8N, por exemplo:
-  - Adicionar funcionalidade ao Daily que o permita ter um action button para o campo de URL e que esse campo de URL suporte templating com dados baseados nos valores da tarefa  
+Top-priority:
+  Tasks:
+    - The user should be able to quickly add a new task to the inbox
+    - The user should be able to mark tasks as "Frogs"
+    - The User should be able to add new tasks to individual groups
+    - The User should be able to move tasks between groups
+    - The user should be able to move tasks between the active and backlog portions of a group
+    - The User should be able to delete tasks @done
+    - The User should be able to rename tasks @done
+    - The User should be able to reorder tasks @done
+    - The user should be able to pick a task to work on
+    - The user should be able to mark a task as complete
+    - The user should be able to mark a task as incomplete
+    - The user should be able to mark a task as blocking
+    - The user should be able to mark a task as cancelled
+    - The user should be able to snooze the task to the next day
+    The User should be able to set local settings for the task:
+      - The user should be able to set the task's pomodoro length
+      - The user should be able to set the task's due date
+      - The user should be able to set the task's max pomodoro count per day
+        When this number is reached, the task should be auto-snoozed to the next day
+  Groups:
+    - The User should be able to add new groups @done
+    - The User should be able to delete groups @done
+    - The User should be able to rename groups @done
+    - The User should be able to reorder groups @done
+    The User should be able to set local settings for the group:
+      - The user should be able to set the group's pomodoro length
+      - The user should be able to set the group's weekly availability
+      - The user should be able to set the group's "time to appear"
+      - The user should be able to set the group's "time to disappear"
+      - The user should be able to set the max pomodoro count for a group
+      - The user should be able to set the max number of active tasks for a group and if completed tasks should be counted
+  Sessions:
+    - The user should be able to start a new session based on a task
+    - The user should be able to start a new session based on a group
+    - The user should be able to pause a session
+    - The user should be able to resume a session
+    - The user should be able to cancel a session
+    - The user should be able to mark a session as complete
+  Starting and Ending a day:
+    - The user should be able to start a new day
+  Integrations:
+    - The user should be able to pull tasks from Linear to the inbox
+  Inbox:
+    - The inbox is a place where tasks that were not properly classified are placed @done
+    - Any task that does not have a category is moved to the inbox
+    - Tasks imported from integrations are placed in the inbox
+    - The inbox has a counter that shows how many tasks are in it
+    - When the count is 0, the inbox is hidden
+    - When the count is greater than a number N defined by the user, the user shoould be prompted to process the inbox
+    - The user should be able to move tasks from the inbox to a group only by classifying it
+    - Tasks inside groups need to have a quick way to be moved to the inbox
+    
 
-Adicionar animação de confetti quando uma tarefa é marcada como concluída:
-  - Procurar uma animação de confetti para mostrar
-  - Adicionar o código para rodar a animação
+
+Later:
+  Tasks:
+    - The user should be able to quickly add a new task to the inbox
+    - The User should be able to add new tasks to the inbox
+    - The user should be able to mark tasks as "Frogs"
+    - The User should be able to add new tasks to individual groups
+    - The User should be able to move tasks between groups
+    - The user should be able to move tasks between the active and backlog portions of a group
+    - The User should be able to delete tasks
+    - The User should be able to rename tasks
+    - The User should be able to reorder tasks
+    - The user should be able to pick a task to work on
+    - The user should be able to mark a task as complete
+    - The user should be able to mark a task as incomplete
+    - The user should be able to mark a task as blocking
+    - The user should be able to mark a task as cancelled
+    - The user should be able to snooze the task to the next day
+    The User should be able to set local settings for the task:
+      - The user should be able to set the task's pomodoro length
+      - The user should be able to set the task's due date
+      - The user should be able to set the task's max pomodoro count per day
+        When this number is reached, the task should be auto-snoozed to the next day
+  Groups:
+    - The User should be able to add new groups
+    - The User should be able to delete groups
+    - The User should be able to rename groups
+    - The User should be able to reorder groups
+    The User should be able to set local settings for the group:
+      - The user should be able to set the group's pomodoro length
+      - The user should be able to set the group's weekly availability
+      - The user should be able to set the group's "time to appear"
+      - The user should be able to set the group's "time to disappear"
+      - The user should be able to set the max pomodoro count for a group
+      - The user should be able to set the max number of active tasks for a group and if completed tasks should be counted
+    Insights:
+      - Based on the group and active tasks settings, the group should be able to calculate how much work would be required to complete all tasks and shouw it on a tooltip
+      - The "Run group as task" feature should use the calculated time to complete all tasks
+  Sessions:
+    - The user should be able to start a new session based on a task
+    - The user should be able to start a new session based on a group
+    - The user should be able to pause a session
+    - The user should be able to resume a session
+    - The user should be able to cancel a session
+    - The user should be able to mark a session as complete
+    End of session flow:
+      - When a session ends, the user should be prompted to leave a note about the session
+      - Then, it should be prompted for a mood check
+  Breaks:
+    - The user should be able to start a break
+    - The user should be able to pause a break
+    - The user should be able to resume a break
+    - The user should be able to cancel a break
+    - The user should be able to mark a break as complete
+  Starting and Ending a day:
+    - The user should be able to start a new day
+    - The user should be able to end a day
+    - The day should end automatically at a configurable time
+    Ending the day:
+      - When ending the day the user should be prompted to leave a note about the day
+    Starting the day:
+      - When the day starts, the user should be shown the note from the previous day
+      - Then, it should be prompted for a mood check
+      - Then, it should be prompted for a brain dump
+      - Then, it should see a summary of the wins from the previous day (tasks completed, sessions completed, etc)
+      - Then, it should be prompted to set a goal for the day
+      - Then, it should be asked what he wants to do differently today, to achieve even more
+      - Then, it should be prompted for a second mood check
+      - Then, it should be prompted to pick the Frog for the day
+    - When the day starts, the user should be prompted to set a goal for the day and pick the Frog for the day
+  Integrations:
+    - The user should be able to integrate with Email
+    - There should be a way to quickly send sites from the browser to Daily (maybe create a reading list?)
+    - The user should be able to pull tasks from Linear to the inbox
+    - The user should be able to integrate with Google Calendar
+    - The user should be able to integrate with Jira (after Fever starts)
+    - The user should be able to integrate with Github
+  Inbox:
+    - The inbox is a place where tasks that were not properly classified are placed
+    - Any task that does not have a category is moved to the inbox
+    - Tasks imported from integrations are placed in the inbox
+    - The inbox has a counter that shows how many tasks are in it
+    - When the count is 0, the inbox is hidden
+    - When the count is greater than a number N defined by the user, the user shoould be prompted to process the inbox
+    - The user should be able to move tasks from the inbox to a group only by classifying it
+    - Tasks inside groups need to have a quick way to be moved to the inbox
+    Processing the Inbox:
+      Processing the inbox is the process of categorizing tasks that are in the inbox, in a way that will help both the algorithm and the user understand which group the task belongs to, as well as it's property in relation to the rest of the tasks.
+      - When the user starts to process the inbox, it needs to start a new session of N minutes, defined in the settings
+      - The UI to process the inbox should be a modal
+        - The user should be able to see the task's name
+        - The user should be able to see the task's description
+        - The user should be able to see the task's due date
+        - The user should be able to see the task's pomodoro length
+        - The user should be able to see the task's max pomodoro count per day
+        - The user should have a link to the task's source
+      The processing flow for a single task:
+      The processing flow is loosely based on GTD and the Eisenhower Matrix
+        - The user should be able to process the task by assigning the different missing task properties
+          - Category
+          - Complexity
+          - Urgency
+          - Impact
+          - Delegability
+          - Time to benefit
+          - Group
+  AI:
+    - Attach a emoji to each task based on the task's properties
+    - Alert when a new task is not actionable enough and suggest moving it to a another group
+    - Suggest a categoization for the task based on the task's properties and previous tasks
+  

@@ -25,16 +25,18 @@ import { ref, computed, watch } from "vue";
 
 export default {
   props: {
-    value: String,
+    modelValue: String,
   },
   inheritAttrs: false,
   setup(props, { emit }) {
     const isEditing = ref(false);
-    const text = ref(props.value);
+    const text = ref(props.modelValue ?? "");
     const formattedText = computed(() => {
       // transform the text to a formatted version
       // this is a placeholder, you should implement your own formatting
-      return text.value.replace("->", "→").split("\n").join("<br/>");
+      return text.value
+        ? text.value.replace("->", "→").split("\n").join("<br/>")
+        : text.value;
     });
 
     // watch for changes in the text and emit the new value
