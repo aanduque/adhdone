@@ -20,7 +20,8 @@ import {
   uniq,
   filter,
   values,
-clone,
+  clone,
+  isEmpty,
 } from "lodash";
 import moment from "moment/min/moment-with-locales";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
@@ -38,12 +39,13 @@ import TaskDetails from "./TaskDetails.vue";
 import TaskList from "./TaskList.vue";
 import EditTask from "./settings/EditTask.vue";
 import Task from "../models/Task";
-import Group, {groupAsTask} from "../models/Group";
+import Group, { groupAsTask } from "../models/Group";
 import Session from "../models/Session";
 import {
   PlusCircleIcon,
   PlayIcon,
   ForwardIcon,
+  SparklesIcon,
   DocumentDuplicateIcon,
   UserPlusIcon,
   BoltIcon,
@@ -163,7 +165,7 @@ const isTaskSelected = (task) => {
 
 const Linear = ref(new LinearPlugin());
 
-const SessionIntegration = ref(new SessionPlugin());
+// const SessionIntegration = ref(new SessionPlugin());
 
 initHooks();
 
@@ -191,7 +193,8 @@ const currentUrl = ref("");
 const isDragging = ref(null);
 
 const tabs = [
-  { id: "groups", name: "Group View", icon: SquaresPlusIcon },
+  { id: "focus", name: "Focus", icon: SparklesIcon },
+  { id: "groups", name: "All", icon: SquaresPlusIcon },
   // { id: "calendar", name: "Calendar View", icon: CalendarIcon },
   // { id: "notes", name: "Notes View", icon: BookOpenIcon },
 ];
@@ -402,7 +405,6 @@ const clearState = () => {
 };
 
 const updateUrlWithState = () => {
-
   return;
 
   const compressedValue = LZString.compressToEncodedURIComponent(
@@ -484,21 +486,19 @@ const pickTaskInGroup = (group) => {
 };
 
 const initializeState = () => {
-
-  const state = read('state', extractStateFromUrl)
+  const state = read("state", data.value);
 
   state.settings = defaultsDeep(state.settings, defaultSettings);
 
   data.value = state;
-
-}
+};
 
 const extractStateFromUrl = () => {
   if (window.location.hash.length <= 1) {
     return;
   }
 
-  console.log('Fetching from the URL...')
+  console.log("Fetching from the URL...");
 
   currentUrl.value = window.location.toString();
 
@@ -508,7 +508,7 @@ const extractStateFromUrl = () => {
 
   state.settings = defaultsDeep(state.settings, defaultSettings);
 
-  return state
+  return state;
 };
 
 const selectedTask = computed(() => {
@@ -558,15 +558,15 @@ const taskHasCategory = (task, categoryId) => {
 };
 
 const getCategory = (categoryId: string) => {
-  const categoriesList = clone(data.value.categories)
+  const categoriesList = clone(data.value.categories);
 
   categoriesList.push({
-    name: 'Group',
+    name: "Group",
     color: "#333333",
-  })
+  });
 
   // console.log(categoriesList)
-  
+
   return (
     categoriesList.filter(
       (category) => snakeCase(category.name) === snakeCase(categoryId)
@@ -649,31 +649,25 @@ onMounted(() => {
 });
 
 onUpdated(() => {
+  console.log("Updating... Check if sync is needed...");
 
-  console.log('Updating... Check if sync is needed...')
+  const syncFrequencyInMinutes = 0.1;
+  const lastSync = data.value.lastSync ?? 0;
 
-  const syncFrequencyInMinutes = 0.1
-  const lastSync = data.value.lastSync ?? 0
-
-  if (lastSync + (syncFrequencyInMinutes * 1000 * 60) <= Date.now()) {
-
-    console.log('Starting Sync to LocalStorage...')
+  if (lastSync + syncFrequencyInMinutes * 1000 * 60 <= Date.now()) {
+    console.log("Starting Sync to LocalStorage...");
 
     nextTick(() => {
+      write("state", data.value);
 
-      write('state', data.value)
+      const newSyncTimestamp = Date.now();
 
-      const newSyncTimestamp = Date.now()
+      console.log(`Sync finished. New lastSync value: ${newSyncTimestamp}`);
 
-      console.log(`Sync finished. New lastSync value: ${newSyncTimestamp}`)
-
-      data.value.lastSync = newSyncTimestamp
-
-    })
-
+      data.value.lastSync = newSyncTimestamp;
+    });
   }
-
-})
+});
 
 const getGroupBy = (value, field = "id") => {
   return find(data.value.groups, [field, value]);
@@ -730,6 +724,28 @@ const deleteTask = (group, task) => {
     }
   }
 };
+
+const groups = computed(() => {
+  return data.value.groups.filter((group) => {
+    console.log(
+      "group",
+      group.name,
+      group.ignore,
+      group.tasks.active.filter((task) => !(task.done || task.cancelled))
+    );
+
+    if (data.value.currentView !== "focus") {
+      return true;
+    }
+
+    return !(
+      group.ignore ||
+      isEmpty(
+        group.tasks.active.filter((task) => !(task.done || task.cancelled))
+      )
+    );
+  });
+});
 
 const deleteGroup = (group) => {
   const groupIndex = findIndex(data.value.groups, ["id", group.id]);
@@ -831,16 +847,7 @@ const keymap = {
               Back End Developer
             </h2> -->
             <input
-              class="
-                text-lg
-                font-medium
-                leading-7
-                text-gray-900
-                focus:outline-none
-                sm:truncate sm:text-xl sm:tracking-tight
-                lg:text-2xl
-                w-full
-              "
+              class="text-lg font-medium leading-7 text-gray-900 focus:outline-none sm:truncate sm:text-xl sm:tracking-tight lg:text-2xl w-full"
               :size="data.pageTitle.length ? data.pageTitle.length - 4 : 20"
               :placeholder="today"
               v-model="data.pageTitle"
@@ -849,28 +856,7 @@ const keymap = {
           <div class="mt-4 flex items-center md:mt-0 md:ml-4">
             <button
               type="button"
-              class="
-                lg:ml-3
-                w-full
-                lg:w-auto
-                justify-center
-                inline-flex
-                items-center
-                rounded-md
-                border border-transparent
-                bg-indigo-600
-                px-4
-                py-2
-                text-sm
-                font-medium
-                text-white
-                shadow-sm
-                hover:bg-indigo-700
-                focus:outline-none
-                focus:ring-2
-                focus:ring-indigo-500
-                focus:ring-offset-2
-              "
+              class="lg:ml-3 w-full lg:w-auto justify-center inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               @click.prevent="() => addGroup()"
             >
               <PlayCircleIcon
@@ -882,17 +868,7 @@ const keymap = {
             <Menu as="div" class="relative ml-2 inline-block text-left">
               <div>
                 <MenuButton
-                  class="
-                    flex
-                    items-center
-                    rounded-full
-                    text-gray-400
-                    focus:outline-none
-                    focus:ring-2
-                    focus:ring-indigo-500
-                    focus:ring-offset-2
-                    focus:ring-offset-gray-100
-                  "
+                  class="flex items-center rounded-full text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-100"
                 >
                   <span class="sr-only">Open options</span>
                   <EllipsisVerticalIcon class="h-6 w-6" aria-hidden="true" />
@@ -908,20 +884,7 @@ const keymap = {
                 leave-to-class="transform opacity-0 scale-95"
               >
                 <MenuItems
-                  class="
-                    absolute
-                    right-0
-                    z-20
-                    mt-2
-                    w-56
-                    origin-top-right
-                    divide-y divide-gray-100
-                    rounded-md
-                    bg-white
-                    shadow-lg
-                    ring-1 ring-black ring-opacity-5
-                    focus:outline-none
-                  "
+                  class="absolute right-0 z-20 mt-2 w-56 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
                 >
                   <div class="py-1">
                     <MenuItem v-slot="{ active }">
@@ -940,13 +903,7 @@ const keymap = {
                         ]"
                       >
                         <DocumentDuplicateIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Duplicate
@@ -966,13 +923,7 @@ const keymap = {
                         ]"
                       >
                         <Cog8ToothIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Settings
@@ -989,13 +940,7 @@ const keymap = {
                         ]"
                       >
                         <TagIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Categories
@@ -1012,13 +957,7 @@ const keymap = {
                         ]"
                       >
                         <LinkIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Integrations
@@ -1037,13 +976,7 @@ const keymap = {
                         ]"
                       >
                         <UserPlusIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Share
@@ -1071,13 +1004,7 @@ const keymap = {
                         ]"
                       >
                         <ArrowDownCircleIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Export
@@ -1096,13 +1023,7 @@ const keymap = {
                         ]"
                       >
                         <CheckCircleIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Remove Finished
@@ -1119,13 +1040,7 @@ const keymap = {
                         ]"
                       >
                         <TrashIcon
-                          class="
-                            mr-3
-                            h-5
-                            w-5
-                            text-gray-400
-                            group-hover:text-gray-500
-                          "
+                          class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                           aria-hidden="true"
                         />
                         Clear All
@@ -1148,13 +1063,7 @@ const keymap = {
           <select
             id="tabs"
             name="tabs"
-            class="
-              block
-              w-full
-              rounded-md
-              border-gray-300
-              focus:border-indigo-500 focus:ring-indigo-500
-            "
+            class="block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
           >
             <option
               v-for="tab in tabs"
@@ -1194,23 +1103,12 @@ const keymap = {
       </div>
       <div
         v-if="data.currentView === 'calendar'"
-        class="
-          divide-y divide-gray-200
-          relative
-          bg-no-repeat
-          rounded-lg
-          bg-white
-          shadow
-          sm:grid
-          md:grid-cols-2
-          lg:grid-cols-3
-          sm:gap-px sm:divide-y-0
-        "
+        class="divide-y divide-gray-200 relative bg-no-repeat rounded-lg bg-white shadow sm:grid md:grid-cols-2 lg:grid-cols-3 sm:gap-px sm:divide-y-0"
       >
         <Calendar :sessions="data.sessions ?? []" :groups="data.groups" />
       </div>
       <div
-        v-if="data.currentView === 'groups'"
+        v-if="data.currentView === 'groups' || data.currentView === 'focus'"
         v-auto-animate
         class="relative bg-no-repeat rounded-lg bg-gray-50 shadow"
       >
@@ -1228,7 +1126,7 @@ const keymap = {
           class="sm:grid divide-y divide-gray-200 md:grid-cols-2 lg:grid-cols-3"
         >
           <div
-            v-for="(group, groupIndex) in data.groups"
+            v-for="(group, groupIndex) in groups"
             @mouseover="() => tagGroupAsCurrent(group)"
             :key="group.id"
             :class="[
@@ -1246,7 +1144,14 @@ const keymap = {
                 ? 'rounded-bl-lg rounded-br-lg sm:rounded-bl-none'
                 : '',
               'relative group p-8 flex flex-col',
-              group.ignore ? 'bg-gray-50 order-last' : 'bg-white',
+              group.ignore ? 'bg-gray-50' : 'bg-white',
+              isEmpty(
+                group.tasks.active.filter(
+                  (task) => !(task.done || task.cancelled)
+                )
+              )
+                ? 'order-last'
+                : '',
             ]"
           >
             <!-- <div>
@@ -1272,15 +1177,7 @@ const keymap = {
                     }
                   "
                   :value="group.name"
-                  class="
-                    -mt-2
-                    bg-transparent
-                    py-2
-                    text-lg
-                    font-medium
-                    text-gray-900
-                    focus:outline-none
-                  "
+                  class="-mt-2 bg-transparent py-2 text-lg font-medium text-gray-900 focus:outline-none"
                   :id="`group-name-${group.id}`"
                   :placeholder="'Group ' + (groupIndex + 1)"
                 />
@@ -1295,70 +1192,28 @@ const keymap = {
                   <button
                     @click.prevent="() => pickTask(groupAsTask(group))"
                     v-tooltip="'Run group as task'"
-                    class="
-                      group-move-handle
-                      hidden
-                      items-center
-                      rounded-full
-                      group-hover:flex
-                      bg-transparent
-                      p-2
-                      text-gray-400
-                      hover:text-gray-600
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500
-                    "
+                    class="group-move-handle hidden items-center rounded-full group-hover:flex bg-transparent p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <PlayCircleIcon class="h-5 w-5" />
                   </button>
                   <button
                     v-tooltip="'Pick task within this group'"
                     @click.prevent="() => pickTaskInGroup(group)"
-                    class="
-                      hidden
-                      items-center
-                      rounded-full
-                      group-hover:flex
-                      bg-transparent
-                      p-2
-                      text-gray-400
-                      hover:text-gray-600
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500
-                    "
+                    class="hidden items-center rounded-full group-hover:flex bg-transparent p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <BoltIcon class="h-5 w-5" />
                   </button>
                   <button
                     v-tooltip="'Pull tasks from integrations'"
                     @click.prevent="() => pullTasks(group)"
-                    class="
-                      hidden
-                      items-center
-                      rounded-full
-                      group-hover:flex
-                      bg-transparent
-                      p-2
-                      text-gray-400
-                      hover:text-gray-600
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500
-                    "
+                    class="hidden items-center rounded-full group-hover:flex bg-transparent p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <ArrowPathIcon class="h-5 w-5" />
                   </button>
                   <button
                     @click.prevent="() => {}"
                     v-tooltip="'Drag to reorder groups'"
-                    class="
-                      group-move-handle
-                      hidden
-                      items-center
-                      rounded-full
-                      group-hover:flex
-                      bg-transparent
-                      p-2
-                      text-gray-400
-                      hover:text-gray-600
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500
-                    "
+                    class="group-move-handle hidden items-center rounded-full group-hover:flex bg-transparent p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <ArrowsPointingOutIcon class="h-5 w-5" />
                   </button>
@@ -1366,17 +1221,7 @@ const keymap = {
                     <div>
                       <MenuButton
                         v-tooltip="'Group settings'"
-                        class="
-                          hidden
-                          items-center
-                          rounded-full
-                          group-hover:flex
-                          bg-transparent
-                          p-2
-                          text-gray-400
-                          hover:text-gray-600
-                          focus:outline-none focus:ring-2 focus:ring-indigo-500
-                        "
+                        class="hidden items-center rounded-full group-hover:flex bg-transparent p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <span class="sr-only">Open options</span>
                         <Cog8ToothIcon class="h-5 w-5" aria-hidden="true" />
@@ -1392,20 +1237,7 @@ const keymap = {
                       leave-to-class="transform opacity-0 scale-95"
                     >
                       <MenuItems
-                        class="
-                          absolute
-                          right-0
-                          z-20
-                          mt-2
-                          w-72
-                          origin-top-right
-                          rounded-md
-                          bg-white
-                          shadow-lg
-                          ring-1 ring-black ring-opacity-5
-                          divide-y divide-gray-100
-                          focus:outline-none
-                        "
+                        class="absolute right-0 z-20 mt-2 w-72 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 divide-y divide-gray-100 focus:outline-none"
                       >
                         <div class="py-1">
                           <MenuItem v-slot="{ active }">
@@ -1472,13 +1304,7 @@ const keymap = {
                               ]"
                             >
                               <TrashIcon
-                                class="
-                                  mr-3
-                                  h-5
-                                  w-5
-                                  text-gray-400
-                                  group-hover:text-gray-500
-                                "
+                                class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500"
                                 aria-hidden="true"
                               />
                               Delete
@@ -1518,13 +1344,7 @@ const keymap = {
                 <div class="relative flex justify-center items-center">
                   <span
                     :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
-                    class="
-                      px-2
-                      py-0.5
-                      text-xs text-gray-400
-                      border border-gray-200
-                      rounded-full
-                    "
+                    class="px-2 py-0.5 text-xs text-gray-400 border border-gray-200 rounded-full"
                     >Active</span
                   >
                 </div>
@@ -1537,12 +1357,14 @@ const keymap = {
                 :active-task="selectedTask"
                 :selected-tasks="selectedTasks"
                 :categories="data.categories"
-                :max-tasks="data.settings.maxTasksPerGroup"
+                :max-tasks="group.ignore ? 999 : data.settings.maxTasksPerGroup"
                 :class="['-mx-8', group.ignore ? 'bg-gray-50' : 'bg-white']"
                 :item-classes="group.ignore ? 'bg-gray-50' : 'bg-white'"
                 scope="tasks"
                 :picked-task="currentTask"
-                @task:done="(task, group) => doAction('task.completed', task, group)"
+                @task:done="
+                  (task, group) => doAction('task.completed', task, group)
+                "
                 @task:mouseover="
                   (task, group) =>
                     (data.hoveredTask = { groupId: group.id, taskId: task.id })
@@ -1592,13 +1414,7 @@ const keymap = {
                 <div class="relative flex justify-center items-center">
                   <span
                     :class="group.ignore ? 'bg-gray-50' : 'bg-white'"
-                    class="
-                      px-2
-                      py-0.5
-                      text-xs text-gray-400
-                      border border-gray-200
-                      rounded-full
-                    "
+                    class="px-2 py-0.5 text-xs text-gray-400 border border-gray-200 rounded-full"
                     >Backlog</span
                   >
                 </div>
@@ -1641,16 +1457,7 @@ const keymap = {
             </div>
 
             <div
-              class="
-                align-self
-                mt-auto
-                -mb-4
-                -mr-5
-                -ml-3
-                flex
-                items-center
-                justify-between
-              "
+              class="align-self mt-auto -mb-4 -mr-5 -ml-3 flex items-center justify-between"
             >
               <div v-if="group.tasks?.backlog?.length" class="">
                 <a
@@ -1684,21 +1491,7 @@ const keymap = {
                 <button
                   type="button"
                   v-tooltip.left="'Add new task'"
-                  class="
-                    inline-flex
-                    items-center
-                    rounded-full
-                    border border-transparent
-                    bg-indigo-600
-                    p-1
-                    text-white
-                    shadow-sm
-                    hover:bg-indigo-700
-                    focus:outline-none
-                    focus:ring-2
-                    focus:ring-indigo-500
-                    focus:ring-offset-2
-                  "
+                  class="inline-flex items-center rounded-full border border-transparent bg-indigo-600 p-1 text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                   @click.prevent="() => addTask(group)"
                 >
                   <PlusIconMini class="h-5 w-5" aria-hidden="true" />
@@ -1764,22 +1557,7 @@ const keymap = {
             ? 'opacity-50'
             : ''
         "
-        class="
-          inline-flex
-          items-center
-          rounded-md
-          px-4
-          py-2
-          text-sm
-          font-medium
-          text-white
-          shadow-sm
-          hover:bg-indigo-500
-          focus:outline-none
-          focus:ring-2
-          focus:ring-indigo-500
-          focus:ring-offset-2
-        "
+        class="inline-flex items-center rounded-md px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
       >
         <ForwardIcon class="lg:mr-2 lg:-ml-1 h-5 w-5" aria-hidden="true" />
         <span class="hidden lg:block">
@@ -1795,22 +1573,7 @@ const keymap = {
       <a
         v-if="currentTask && !data.currentSession"
         @click.prevent="() => start(currentTask)"
-        class="
-          flex
-          items-center
-          justify-center
-          rounded-md
-          border border-transparent
-          bg-white
-          px-4
-          py-2
-          text-sm
-          font-medium
-          text-indigo-600
-          shadow-sm
-          hover:bg-indigo-50
-          group
-        "
+        class="flex items-center justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm hover:bg-indigo-50 group"
         href="#"
       >
         <PlayIcon class="lg:mr-2 lg:-ml-1 h-5 w-5" aria-hidden="true" />
@@ -1821,22 +1584,7 @@ const keymap = {
       <a
         v-if="currentTask && data.currentSession"
         @click.prevent="completeTaskAndPickNext"
-        class="
-          flex
-          items-center
-          justify-center
-          rounded-md
-          border border-transparent
-          bg-white
-          px-4
-          py-2
-          text-sm
-          font-medium
-          text-indigo-600
-          shadow-sm
-          hover:bg-indigo-50
-          group
-        "
+        class="flex items-center justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm hover:bg-indigo-50 group"
         href="#"
       >
         <CheckCircleIcon class="lg:mr-2 lg:-ml-1 h-5 w-5" aria-hidden="true" />
@@ -1847,21 +1595,7 @@ const keymap = {
 
       <button
         v-if="!currentTask"
-        class="
-          flex
-          items-center
-          justify-center
-          rounded-md
-          border border-transparent
-          bg-white
-          px-4
-          py-2
-          text-sm
-          font-medium
-          text-indigo-600
-          shadow-sm
-          hover:bg-indigo-50
-        "
+        class="flex items-center justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm hover:bg-indigo-50"
         @click="() => pickATask()"
       >
         <BoltIcon class="mr-2 -ml-1 h-5 w-5" aria-hidden="true" />
