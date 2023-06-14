@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import { CheckIcon, XMarkIcon } from "@heroicons/vue/24/outline";
+import {
+  CheckIcon,
+  XMarkIcon,
+  ArchiveBoxArrowDownIcon,
+  ClipboardDocumentCheckIcon,
+  EllipsisVerticalIcon,
+  BoltIcon,
+  TagIcon,
+  TrashIcon,
+  ArrowPathIcon,
+  ForwardIcon,
+} from "@heroicons/vue/24/outline";
 import TaskCheck from "./TaskCheck.vue";
 import TaskCanceledCheck from "./TaskCanceledCheck.vue";
 import Empty from "./Empty.vue";
-import { toRefs, defineEmits, onMounted, onUpdated } from "vue";
-import { filter, partition, remove, snakeCase, isNull } from "lodash";
-import { applyFilters } from "@wordpress/hooks";
+import { toRefs, defineEmits, onMounted, onUpdated, ref, computed } from "vue";
+import { filter, partition, remove, snakeCase, isNull, clone } from "lodash";
+import { addAction, addFilter, applyFilters, doAction } from "@wordpress/hooks";
 import { VueDraggableNext } from "vue-draggable-next";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/vue";
 
 const props = defineProps<{
   pickedTask?: Record<string, any>;
@@ -33,8 +45,26 @@ const {
 
 const c = console;
 
+const currentInput = ref(null)
+
+const setCurrentInput = (input, task) => {
+  console.log(input, task)
+  currentInput.value = clone(task)
+}
+
+const focusedTaskId = computed(() => {
+  console.log('the id', currentInput.value?.id)
+  return currentInput.value?.id
+})
+
 const isTaskSelected = (task) => {
   return selectedTasks.value.includes(task.id);
+};
+
+const taskHasCategory = (task, categoryId) => {
+  const category = getCategory(task.category);
+
+  return snakeCase(category.name) === snakeCase(categoryId);
 };
 
 const getCategory = (categoryId: string) => {
@@ -56,9 +86,17 @@ const isTaskActive = (task) => {
   return pickedTask?.value?.id === task.id;
 };
 
+addAction('task.process.title', 'core', (title, task, group) => task.title = title)
+
+// addAction('task.process.title', 'core', (title, task, group) => console.log(title))
+
+const processTaskTitle = (title, task, group) => doAction('task.process.title', title, task, group);
+const processTaskTitleView = (title, task, group) => applyFilters('task.process.title.view', title, task, group);
+
 const emit = defineEmits([
   "update:modelValue",
   "task:dblclick",
+  "task:picked",
   "task:delete",
   "list:overflow",
   "task:mouseover",
@@ -66,6 +104,7 @@ const emit = defineEmits([
   "task:done",
   "task:undone",
   "task:canceled",
+  "update:lastCategory",
 ]);
 
 const checkOverflow = () => {
@@ -76,7 +115,6 @@ const checkOverflow = () => {
       index++;
       return keep;
     });
-    console.log(blocks);
     if (blocks.length === 2) {
       emit("update:modelValue", blocks[0]);
       emit("list:overflow", blocks[1]);
@@ -146,7 +184,7 @@ onMounted(checkOverflow);
             isTaskActive(task)
               ? `${
                   group.ignore ? 'bg-white' : 'bg-gray-50'
-                } scale-[104%] shadow-md border border-gray-200 rounded-md transition-transform z-10`
+                } scale-[104%] shadow-md border border-gray-200 rounded-md transition-transform z-20`
               : '',
             // taskIndex >= data.settings.maxTasksPerGroup &&
             // !isGroupOpened(group)
@@ -168,9 +206,9 @@ onMounted(checkOverflow);
                     : emit('task:undone', task, group, taskIndex)
               "
             />
-            <TaskCanceledCheck v-else />
+            <TaskCanceledCheck v-else v-tooltip="'This task was canceled'" />
 
-            <div class="text-sm flex flex-1">
+            <div class="text-sm flex flex-1 gap-2">
               <label
                 :for="`task-name-${group.id}-${task.id}`"
                 class="
@@ -191,12 +229,13 @@ onMounted(checkOverflow);
                     truncate
                     mr-2
                   "
+                  @input="(event) => processTaskTitle(event.target.value, task, group)"
+                  :value="task.title"
                   :class="[
                     task.done || task?.canceled
                       ? 'line-through opacity-50'
                       : '',
                   ]"
-                  v-model="task.title"
                   @dblclick="() => emit('task:dblclick', task)"
                   @keydown.delete="
                     (e) => {
@@ -234,30 +273,255 @@ onMounted(checkOverflow);
                 class="inline-flex flex items-center mx-1"
                 v-html="applyFilters('task.labels', '', task, group)"
               ></span>
+
+              <span
+                title="Recurring"
+                v-tooltip="'This task is recurring'"
+                v-if="task?.recurring"
+                class="top-[-0.5px] flex items-center text-xs text-gray-600"
+              >
+                <ArrowPathIcon class="h-3 w-3" />
+              </span>
+
               <span
                 v-if="task.jumped"
-                class="
-                  inline-flex
-                  items-center
-                  rounded
-                  bg-gray-100
-                  px-2
-                  mr-1
-                  inline-block
-                  py-0.5
-                  text-xs
-                  font
-                  text-gray-800
+                v-tooltip="
+                  `This task was skipped ${Number(task.jumped)} time(s)`
                 "
-                >Skipped once</span
-              >
-              <span
-                v-if="task.counter"
                 class="flex items-center text-xs text-gray-600"
               >
-                <XMarkIcon class="h-2 w-2" />
+                <ForwardIcon class="top-[-1px] mr-0.5 h-4 w-4" />
+                <span class="top-[-1px]">{{ Number(task.jumped) }}</span>
+              </span>
+
+              <span
+                v-if="task.counter"
+                v-tooltip="`This task was picked ${task.counter} time(s)`"
+                class="flex items-center text-xs text-gray-600"
+              >
+                <XMarkIcon class="h-3 w-3" />
                 <span class="top-[-1px]">{{ task.counter }}</span>
               </span>
+              <!-- Menu -->
+
+              <Menu
+                as="div"
+                class="
+                  relative
+                  inline-block
+                  text-left
+                  justify-self-end
+                  drag-item
+                "
+              >
+                <div>
+                  <MenuButton
+                    class="
+                      hidden
+                      group-hover:flex
+                      items-center
+                      rounded-full
+                      text-gray-400
+                      hover:text-gray-600
+                      focus:outline-none
+                      focus:ring-2
+                      focus:ring-indigo-500
+                      focus:ring-offset-2
+                      focus:ring-offset-gray-100
+                    "
+                  >
+                    <span class="sr-only">Open options</span>
+                    <EllipsisVerticalIcon class="h-5 w-5" aria-hidden="true" />
+                  </MenuButton>
+                </div>
+
+                <transition
+                  enter-active-class="transition ease-out duration-100"
+                  enter-from-class="transform opacity-0 scale-95"
+                  enter-to-class="transform opacity-100 scale-100"
+                  leave-active-class="transition ease-in duration-75"
+                  leave-from-class="transform opacity-100 scale-100"
+                  leave-to-class="transform opacity-0 scale-95"
+                >
+                  <MenuItems
+                    class="
+                      absolute
+                      right-0
+                      z-20
+                      mt-2
+                      w-56
+                      origin-top-right
+                      divide-y divide-gray-100
+                      rounded-md
+                      bg-white
+                      shadow-lg
+                      ring-1 ring-black ring-opacity-5
+                      focus:outline-none
+                    "
+                  >
+                    <div class="py-1">
+                      <MenuItem v-slot="{ active }">
+                        <a
+                          @click.prevent="
+                            () => emit('task:picked', task, group)
+                          "
+                          href="#"
+                          :class="[
+                            active
+                              ? 'bg-gray-100 text-gray-900'
+                              : 'text-gray-700',
+                            'group flex items-center px-4 py-2 text-sm',
+                          ]"
+                        >
+                          <BoltIcon
+                            class="
+                              mr-3
+                              h-5
+                              w-5
+                              text-gray-400
+                              group-hover:text-gray-500
+                            "
+                            aria-hidden="true"
+                          />
+                          Pick Task
+                        </a>
+                      </MenuItem>
+                      <MenuItem v-slot="{ active }">
+                        <a
+                          @click.prevent="
+                            () =>
+                              (task.recurring = task.recurring
+                                ? !task.recurring
+                                : true)
+                          "
+                          href="#"
+                          :class="[
+                            active
+                              ? 'bg-gray-100 text-gray-900'
+                              : 'text-gray-700',
+                            'group flex items-center px-4 py-2 text-sm justify-between',
+                          ]"
+                        >
+                          <span class="flex">
+                            <ArrowPathIcon
+                              class="
+                                mr-3
+                                h-5
+                                w-5
+                                text-gray-400
+                                group-hover:text-gray-500
+                              "
+                              aria-hidden="true"
+                            />
+                            Recurring
+                          </span>
+                          <CheckIcon
+                            v-if="task.recurring"
+                            class="h-3 w-3 text-green-700"
+                          />
+                        </a>
+                      </MenuItem>
+                    </div>
+                    <div class="py-1">
+                      <small class="px-4 py-1 block">Category</small>
+                      <MenuItem
+                        v-slot="{ active }"
+                        v-for="(category, index) in categories"
+                        :key="index"
+                      >
+                        <a
+                          href="#"
+                          @click.prevent="
+                            () => {
+                              // data.lastCategory = snakeCase(category.name);
+                              emit('update:lastCategory', category);
+                              task.category = snakeCase(category.name);
+                            }
+                          "
+                          :class="[
+                            active
+                              ? 'bg-gray-100 text-gray-900'
+                              : 'text-gray-700',
+                            'group flex items-center px-4 py-2 text-sm justify-between',
+                          ]"
+                        >
+                          <span class="flex">
+                            <TagIcon
+                              class="mr-3 h-5 w-5"
+                              :style="{ color: category.color }"
+                              aria-hidden="true"
+                            />
+                            {{ category.name }}
+                          </span>
+                          <CheckIcon
+                            v-if="taskHasCategory(task, category.name)"
+                            class="h-3 w-3 text-green-700"
+                          />
+                        </a>
+                      </MenuItem>
+                    </div>
+
+                    <div class="py-1">
+                      <MenuItem v-slot="{ active }">
+                        <a
+                          @click.prevent="
+                            () => {
+                              task.canceled = !(task.canceled ?? false);
+                              c.log(task);
+                            }
+                          "
+                          href="#"
+                          :class="[
+                            active
+                              ? 'bg-gray-100 text-gray-900'
+                              : 'text-gray-700',
+                            'group flex items-center px-4 py-2 text-sm',
+                          ]"
+                        >
+                          <XMarkIcon
+                            class="
+                              mr-3
+                              h-5
+                              w-5
+                              text-gray-400
+                              group-hover:text-gray-500
+                            "
+                            aria-hidden="true"
+                          />
+                          Cancel
+                        </a>
+                      </MenuItem>
+                      <MenuItem v-slot="{ active }">
+                        <a
+                          @click.prevent="
+                            () => emit('task:delete', task, group)
+                          "
+                          href="#"
+                          :class="[
+                            active
+                              ? 'bg-gray-100 text-gray-900'
+                              : 'text-gray-700',
+                            'group flex items-center px-4 py-2 text-sm',
+                          ]"
+                        >
+                          <TrashIcon
+                            class="
+                              mr-3
+                              h-5
+                              w-5
+                              text-gray-400
+                              group-hover:text-gray-500
+                            "
+                            aria-hidden="true"
+                          />
+                          Delete
+                        </a>
+                      </MenuItem>
+                    </div>
+                  </MenuItems>
+                </transition>
+              </Menu>
+              <!-- End Menu -->
             </div>
           </div>
         </div>

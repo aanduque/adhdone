@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
           short_name: "Daily",
           description: "Finish your tasks, one day at a time.",
           start_url: basePath,
+          theme_color: "#1f2937",
+          background_color: "#f3f4f6",
+          display: "standalone",
           icons: [
             {
               src: "icon-72x72.png",
@@ -72,9 +75,6 @@ export default defineConfig(({ mode }) => {
               purpose: "maskable any",
             },
           ],
-          theme_color: "#1f2937",
-          background_color: "#f3f4f6",
-          display: "standalone",
         },
       }),
     ],

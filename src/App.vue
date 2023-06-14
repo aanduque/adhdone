@@ -20,7 +20,6 @@ import {
 import ActiveTaskBar from "./components/ActiveTaskBar.vue";
 import SidePanel from "./components/SidePanel.vue";
 import Home from "./components/Home.vue";
-import QRCodeModal from "./components/QRCodeModal.vue";
 import gravatar from "gravatar";
 import { ref } from "vue";
 
@@ -45,7 +44,7 @@ const userNavigation = [
 </script>
 
 <template>
-  <div class="min-h-full">
+  <div class="min-h-full bg-gray-100">
     <Disclosure as="nav" class="bg-gray-800 print:hidden" v-slot="{ open }">
       <div class="mx-auto container px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center justify-between">
@@ -78,10 +77,6 @@ const userNavigation = [
           </div>
           <div class="hidden md:block">
             <div class="ml-4 flex items-center md:ml-6">
-              <button class="text-white" @click="() => (qrOpen = !qrOpen)">
-                <QrCodeIcon class="h-6 w-6" />
-              </button>
-
               <!-- <button
                 type="button"
                 class="
@@ -279,18 +274,11 @@ const userNavigation = [
       </DisclosurePanel>
     </Disclosure>
 
-    <main>
+    <main class="min-h-full">
       <!-- <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8"> -->
       <!-- Replace with your content -->
       <!-- <div class="px-4 py-4 sm:px-0"> -->
-      <QRCodeModal
-        :open="qrOpen"
-        title="QR Code"
-        :close="() => (qrOpen = false)"
-      />
-
       <Home />
-
       <!-- </div> -->
       <!-- /End replace -->
       <!-- </div> -->
@@ -298,5 +286,8 @@ const userNavigation = [
   </div>
 </template>
 
-<style scoped>
+<style>
+.v-popper__inner {
+  @apply text-xs;
+}
 </style>

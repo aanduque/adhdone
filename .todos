@@ -1,0 +1,10 @@
+- Por enquanto, remover o calendar view
+
+Adicionar opção de salvar como LocalStorage:
+
+Adicionar opção que me permita escrever hooks utilizando código, para poder conectar o Daily com o N8N, por exemplo:
+  - Adicionar funcionalidade ao Daily que o permita ter um action button para o campo de URL e que esse campo de URL suporte templating com dados baseados nos valores da tarefa  
+
+Adicionar animação de confetti quando uma tarefa é marcada como concluída:
+  - Procurar uma animação de confetti para mostrar
+  - Adicionar o código para rodar a animação
